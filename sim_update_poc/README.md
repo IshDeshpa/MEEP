@@ -1,4 +1,12 @@
 # Sim Update Strategy Proof-of-Concept
+
+## Incremental versions
+
+- `gol1`: Single-threaded baseline. Each update calculates every cell serially.
+- `gol2`: Parallelizes cell updates by creating one thread per cell for each update, then joining all of them.
+- `gol3`: Replaces per-cell thread creation with a persistent worker pool sized to the available hardware threads. Workers dynamically claim cells for each update and remain alive for the full simulation.
+- `gol4`: Keeps `gol3`'s persistent worker pool, but assigns cells to fixed partitions so each worker processes its own partition on every update.
+
 - In-place updates. Naive strategy; would mean object updates are not deterministic (races between object update threads may produce different updates)
 - Buffer switching. Suppose two buffers exist, one at the current timestep and one at the timestep ahead. At the edge of each timestep, calculate updates for every block based on currently adjacent blocks that fill the other buffer. Allows for deterministic calculations.
 - Cell-based or entity-based?

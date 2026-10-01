@@ -1,6 +1,6 @@
 all: gol1
 
-.PHONY: all gol1 gol2 gol3 gol4 gol5 averages.csv run clean
+.PHONY: all gol1 gol2 gol3 gol4 averages.csv run clean
 
 all: averages.csv
 
@@ -20,14 +20,10 @@ gol4: gol4.cpp
 	g++ gol4.cpp -pthread -o gol4
 	./gol4 2>&1 | tee gol4.out
 
-gol5: gol5.cpp
-	g++ gol5.cpp -pthread -o gol5
-	./gol5 2>&1 | tee gol5.out
-
-averages.csv: gol1 gol2 gol3 gol4 gol5 average_to_csv.py
-	python3 average_to_csv.py gol1.out gol2.out gol3.out gol4.out gol5.out > averages.csv
+averages.csv: gol1 gol2 gol3 gol4 average_to_csv.py
+	python3 average_to_csv.py gol1.out gol2.out gol3.out gol4.out > averages.csv
 
 run: gol1
 
 clean:
-	rm -f gol1 gol2 gol3 gol4 gol5 gol1.out gol2.out gol3.out gol4.out gol5.out averages.csv
+	rm -f gol1 gol2 gol3 gol4 gol1.out gol2.out gol3.out gol4.out averages.csv

@@ -1,6 +1,8 @@
 // multithread live calc with fixed cell partitions
 // average 1.3ms update tmr
 #include <cstdio>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -70,25 +72,101 @@ void update_partition(bool prev_state[GRID_SZ][GRID_SZ],
   }
 }
 
+using state_grid = bool (*)[GRID_SZ];
+using adj_grid = int (*)[GRID_SZ];
+
+class UpdateWorkers{
+public:
+  explicit UpdateWorkers(const std::vector<partition>& partitions)
+      : partitions_(partitions){
+    workers_.reserve(partitions_.size());
+    for (std::size_t i = 0; i < partitions_.size(); i++){
+      workers_.emplace_back(&UpdateWorkers::worker_loop, this, i);
+    }
+  }
+
+  ~UpdateWorkers(){
+    {
+      std::lock_guard<std::mutex> lock(work_mutex_);
+      stopping_ = true;
+    }
+    work_available_.notify_all();
+    for (std::thread& worker : workers_){
+      worker.join();
+    }
+  }
+
+  void run(state_grid prev_state, state_grid new_state, adj_grid adj){
+    {
+      std::lock_guard<std::mutex> lock(work_mutex_);
+      prev_state_ = prev_state;
+      new_state_ = new_state;
+      adj_ = adj;
+      completed_ = 0;
+      generation_++;
+    }
+    work_available_.notify_all();
+
+    std::unique_lock<std::mutex> lock(work_mutex_);
+    work_complete_.wait(lock, [this](){
+      return completed_ == workers_.size();
+    });
+  }
+
+private:
+  void worker_loop(std::size_t worker_index){
+    unsigned int completed_generation = 0;
+    while (true){
+      state_grid prev_state;
+      state_grid new_state;
+      adj_grid adj;
+      {
+        std::unique_lock<std::mutex> lock(work_mutex_);
+        work_available_.wait(lock, [this, &completed_generation](){
+          return stopping_ || generation_ > completed_generation;
+        });
+        if (stopping_) return;
+
+        completed_generation = generation_;
+        prev_state = prev_state_;
+        new_state = new_state_;
+        adj = adj_;
+      }
+
+      update_partition(prev_state, new_state, adj, partitions_[worker_index]);
+
+      {
+        std::lock_guard<std::mutex> lock(work_mutex_);
+        completed_++;
+        if (completed_ == workers_.size()){
+          work_complete_.notify_one();
+        }
+      }
+    }
+  }
+
+  const std::vector<partition>& partitions_;
+  std::vector<std::thread> workers_;
+  std::mutex work_mutex_;
+  std::condition_variable work_available_;
+  std::condition_variable work_complete_;
+  bool stopping_ = false;
+  unsigned int generation_ = 0;
+  unsigned int completed_ = 0;
+  state_grid prev_state_ = nullptr;
+  state_grid new_state_ = nullptr;
+  adj_grid adj_ = nullptr;
+};
+
 void update(bool prev_state[GRID_SZ][GRID_SZ],
             bool new_state[GRID_SZ][GRID_SZ],
-            const std::vector<partition>& partitions,
+            UpdateWorkers& workers,
             double& update_total_ms){
   ScopedTimer tmr("update_tmr");
 
   int adj[GRID_SZ][GRID_SZ];
   generate_adj(prev_state, adj);
-
-  std::vector<std::thread> threads;
-  threads.reserve(partitions.size());
-  for (const partition& cells : partitions){
-    threads.emplace_back(update_partition, prev_state, new_state, adj,
-                         std::cref(cells));
-  }
-
-  for (std::thread& thread : threads){
-    thread.join();
-  }
+  workers.run(prev_state, new_state, adj);
 
   update_total_ms += tmr.elapsed_ms();
 }
@@ -116,6 +194,7 @@ int main(){
   bool state1[GRID_SZ][GRID_SZ] = {};
   bool state2[GRID_SZ][GRID_SZ] = {};
   std::vector<partition> partitions = make_partitions();
+  UpdateWorkers workers(partitions);
   double update_total_ms = 0.0;
 
   state1[1][2] = true;
@@ -130,7 +209,7 @@ int main(){
     if (UPDATE_IN_PLACE) printf("\033[2J\033[H");
 
     print_state(curr);
-    update(curr, next, partitions, update_total_ms);
+    update(curr, next, workers, update_total_ms);
 
     bool (*temp)[GRID_SZ] = curr;
     curr = next;

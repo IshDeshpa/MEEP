@@ -1,11 +1,11 @@
-// multithread live calc, with thread pool = core count
+// multithread live calc, with threads = core count
 // no more oversubscription hopefully
 // average of 1.8ms update_tmr
 // mutex still blocks, also maybe cache contention?
 #include <cstdio>
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -62,66 +62,110 @@ void update_cell(bool prev_state[GRID_SZ][GRID_SZ], bool new_state[GRID_SZ][GRID
   new_state[i][j] = determine_live(prev_state[i][j], adj[i][j]);
 }
 
-void update(bool prev_state[GRID_SZ][GRID_SZ], bool new_state[GRID_SZ][GRID_SZ], double& update_total_ms){
+using state_grid = bool (*)[GRID_SZ];
+using adj_grid = int (*)[GRID_SZ];
+
+class UpdateWorkers{
+public:
+  UpdateWorkers(){
+    unsigned int core_count = std::thread::hardware_concurrency();
+    if (core_count == 0) core_count = 1;
+
+    workers_.reserve(core_count);
+    for (unsigned int i = 0; i < core_count; i++){
+      workers_.emplace_back(&UpdateWorkers::worker_loop, this);
+    }
+  }
+
+  ~UpdateWorkers(){
+    {
+      std::lock_guard<std::mutex> lock(work_mutex_);
+      stopping_ = true;
+    }
+    work_available_.notify_all();
+
+    for (std::thread& worker : workers_){
+      worker.join();
+    }
+  }
+
+  void run(state_grid prev_state, state_grid new_state, adj_grid adj){
+    {
+      std::lock_guard<std::mutex> lock(work_mutex_);
+      prev_state_ = prev_state;
+      new_state_ = new_state;
+      adj_ = adj;
+      next_cell_ = 0;
+      completed_ = 0;
+      generation_++;
+    }
+    work_available_.notify_all();
+
+    std::unique_lock<std::mutex> lock(work_mutex_);
+    work_complete_.wait(lock, [this](){
+      return completed_ == workers_.size();
+    });
+  }
+
+private:
+  void worker_loop(){
+    unsigned int completed_generation = 0;
+
+    while (true){
+      state_grid prev_state;
+      state_grid new_state;
+      adj_grid adj;
+
+      {
+        std::unique_lock<std::mutex> lock(work_mutex_);
+        work_available_.wait(lock, [this, &completed_generation](){
+          return stopping_ || generation_ > completed_generation;
+        });
+
+        if (stopping_) return;
+
+        completed_generation = generation_;
+        prev_state = prev_state_;
+        new_state = new_state_;
+        adj = adj_;
+      }
+
+      int cell_index;
+      while ((cell_index = next_cell_.fetch_add(1)) < GRID_SZ * GRID_SZ){
+        update_cell(prev_state, new_state, adj,
+                    cell_index / GRID_SZ, cell_index % GRID_SZ);
+      }
+
+      {
+        std::lock_guard<std::mutex> lock(work_mutex_);
+        completed_++;
+        if (completed_ == workers_.size()){
+          work_complete_.notify_one();
+        }
+      }
+    }
+  }
+
+  std::vector<std::thread> workers_;
+  std::mutex work_mutex_;
+  std::condition_variable work_available_;
+  std::condition_variable work_complete_;
+  bool stopping_ = false;
+  unsigned int generation_ = 0;
+  unsigned int completed_ = 0;
+  std::atomic<int> next_cell_ = 0;
+  state_grid prev_state_ = nullptr;
+  state_grid new_state_ = nullptr;
+  adj_grid adj_ = nullptr;
+};
+
+void update(bool prev_state[GRID_SZ][GRID_SZ], bool new_state[GRID_SZ][GRID_SZ],
+            UpdateWorkers& workers, double& update_total_ms){
   ScopedTimer tmr("update_tmr");
 
   int adj[GRID_SZ][GRID_SZ];
   generate_adj(prev_state, adj);
-
-  using duple = std::pair<int, int>;
-  std::queue<duple> work;
-  std::mutex work_mutex;
-  std::condition_variable work_available;
-  bool work_done = false;
-
-  auto worker = [&](){
-    while (true){
-      duple cell;
-
-      {
-        std::unique_lock<std::mutex> lock(work_mutex);
-        work_available.wait(lock, [&](){
-          return work_done || !work.empty();
-        });
-
-        if (work.empty() && work_done) return;
-
-        cell = work.front();
-        work.pop();
-      }
-
-      update_cell(prev_state, new_state, adj, cell.first, cell.second);
-    }
-  };
-
-  unsigned int core_count = std::thread::hardware_concurrency();
-  if (core_count == 0) core_count = 1;
-
-  std::vector<std::thread> threads;
-  threads.reserve(core_count);
-  for (unsigned int i = 0; i < core_count; i++){
-    threads.emplace_back(worker);
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(work_mutex);
-    for (int i=0; i<GRID_SZ; i++){
-      for (int j=0; j<GRID_SZ; j++){
-        work.emplace(i, j);
-      }
-    }
-  }
-  work_available.notify_all();
-
-  {
-    std::lock_guard<std::mutex> lock(work_mutex);
-    work_done = true;
-  }
-  work_available.notify_all();
-
-  for (std::thread& thread : threads){
-    thread.join();
-  }
+  workers.run(prev_state, new_state, adj);
 
   update_total_ms += tmr.elapsed_ms();
 }
@@ -129,6 +173,7 @@ void update(bool prev_state[GRID_SZ][GRID_SZ], bool new_state[GRID_SZ][GRID_SZ],
 int main(){
   bool state1[GRID_SZ][GRID_SZ] = {};
   bool state2[GRID_SZ][GRID_SZ] = {};
+  UpdateWorkers workers;
 
   state1[1][2] = true;
   state1[2][3] = true;
@@ -143,7 +188,7 @@ int main(){
     if (UPDATE_IN_PLACE) printf("\033[2J\033[H");
 
     print_state(curr);
-    update(curr, next, update_total_ms);
+    update(curr, next, workers, update_total_ms);
 
     bool (*temp)[GRID_SZ] = curr;
     curr = next;
