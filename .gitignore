@@ -1,0 +1,5 @@
+# New experiment outputs; existing tracked CPU results are preserved.
+experiments/thread_count/build/
+experiments/thread_count/results/
+__pycache__/
+*.pyc
