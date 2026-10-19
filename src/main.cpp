@@ -6,7 +6,7 @@
 #include <obj.h>
 
 // 3 triangles, 3 verts each
-static vert4Array triVerts(){
+static Vert4Array triVerts(){
   return {
     // triangle 0: in front, centered
     {-1.0, -1.0, 0.0, 1.0},
@@ -24,10 +24,10 @@ static vert4Array triVerts(){
 }
 
 void testmain1(){
-  vert4Array verts = triVerts();
+  Vert4Array verts = triVerts();
 
   // counter-clockwise winding
-  tArray tris = {
+  TArray tris = {
     {0, 1, 2},
     {3, 4, 5},
     {6, 7, 8},
@@ -60,14 +60,14 @@ void testmain1(){
 }
 
 void testmain2(){
-  const vert4Array verts = triVerts();
+  const Vert4Array verts = triVerts();
 
   // one copy of the obj at the centroid of each triangle, all looking along `look`
-  auto buildScene = [&](const dvec4 &look){
+  auto build_scene = [&](const dvec4 &look){
     Mesh global;
     for(unsigned int i = 0; i < verts.size(); i += 3){
       const dvec4 pos = (verts[i] + verts[i + 1] + verts[i + 2]) / 3.0;
-      Obj o("obj/test.obj", dvec4(dvec3(pos), 1.0), look);
+      Obj o("obj/test.obj", dvec4(dvec3(pos), 1.0), look, Color(194, 97, 120));
       global = global + o.toWorld();
     }
     return global;
@@ -84,7 +84,7 @@ void testmain2(){
   };
 
   std::vector<Mesh> scenes;
-  for(const auto &l : looks) scenes.push_back(buildScene(l.second));
+  for(const auto &l : looks) scenes.push_back(build_scene(l.second));
 
   // frame all of the scenes with one camera: center on the first, back off far enough
   // that the bounding sphere of the largest one fits in the view
@@ -112,7 +112,43 @@ void testmain2(){
   std::cout << "wrote out/look+x.ppm .. out/look-z.ppm" << std::endl;
 }
 
+
+
+void testmain3(){
+  const Vert4Array verts = triVerts();
+
+  // one cube at the centroid of each triangle, each its own color
+  const std::vector<Color> colors = {Color(194, 97, 120), Color(97, 194, 120), Color(97, 120, 194)};
+  Mesh scene;
+  dvec3 com(0.0);
+  for(unsigned int i = 0; i < verts.size(); i += 3){
+    const dvec4 pos = (verts[i] + verts[i + 1] + verts[i + 2]) / 3.0;
+    Obj o("obj/cell.obj", dvec4(dvec3(pos), 1.0), dvec4(0.0, 0.0, -1.0, 0.0), colors[i / 3]);
+    scene = scene + o.toWorld();
+    com += dvec3(pos);
+  }
+  com /= double(verts.size() / 3);
+
+  // same camera and orbit as testmain1: start in front of the center and
+  // orbit it so the camera keeps facing the center the whole way around
+  Camera cam(
+    0.1,
+    100.0,
+    60.0,
+    dvec4(com + dvec3(0.0, 0.0, 5.0), 1.0),
+    dvec4(0.0, 0.0, -1.0, 0.0),
+    800,
+    800);
+
+  for(int n = 0; n < 360; n++){
+    cam.capture(scene, "out/cubes" + std::to_string(n) + ".ppm");
+    cam.orbit(com, 1.0);
+  }
+  std::cout << "wrote out/cubes0.ppm .. out/cubes359.ppm" << std::endl;
+}
+
 int main(){
   //testmain1();
-  testmain2();
+  //testmain2();
+  testmain3();
 }

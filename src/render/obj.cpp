@@ -20,6 +20,7 @@ void Mesh::load(const std::string &path){
 void Mesh::load(std::istream &is){
   verts.clear();
   tris.clear();
+  colors.clear();
   name.clear();
 
   std::string line;
@@ -74,17 +75,19 @@ dvec4 Mesh::getCentroid(){
 }
 
 Mesh Mesh::operator+(const Mesh& b) const{
-  const vert4Array &av = this->verts;
-  const vert4Array &bv = b.verts;
-  const tArray &at = this->tris;
-  const tArray &bt = b.tris;
+  const Vert4Array &av = this->verts;
+  const Vert4Array &bv = b.verts;
+  const TArray &at = this->tris;
+  const TArray &bt = b.tris;
 
   Mesh c;
-  vert4Array &cv = c.verts;
-  tArray &ct = c.tris;
+  Vert4Array &cv = c.verts;
+  TArray &ct = c.tris;
+  std::vector<Color> &cc = c.colors;
 
   cv.reserve(av.size() + bv.size());
   ct.reserve(at.size() + bt.size());
+  cc.reserve(at.size() + bt.size());
   
   // concat verts
   cv.insert(cv.end(), av.begin(), av.end());
@@ -97,6 +100,10 @@ Mesh Mesh::operator+(const Mesh& b) const{
     ct.push_back(t + ofs);
   }
 
+  // concat colors, one per triangle, same order as the tris
+  cc.insert(cc.end(), this->colors.begin(), this->colors.end());
+  cc.insert(cc.end(), b.colors.begin(), b.colors.end());
+
   return c;
 }
 
@@ -108,5 +115,5 @@ Mesh Mesh::transformed(const dmat4x4 &m) const{
 
 Mesh Obj::toWorld() const{
   const dmat4x4 model = glm::translate(dmat4x4(1.0), dvec3(pose.pos)) * mat4_cast(pose.lookQuat());
-  return m.transformed(model);
+  return mesh.transformed(model);
 }

@@ -21,12 +21,17 @@ run: $(TARGET)
 	./$(TARGET)
 
 # rename parameters/locals to match .clang-tidy
-format:
-	clang-tidy --fix --fix-errors $(SRCS) -- $(CXXFLAGS)
+# one clang-tidy job per source file, so `make -jN format` runs N of them at once
+FORMAT_TARGETS := $(SRCS:%=format/%)
+
+format: $(FORMAT_TARGETS)
+
+$(FORMAT_TARGETS): format/%:
+	clang-tidy --fix --fix-errors $* -- $(CXXFLAGS)
 
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
 
 -include $(DEPS)
 
-.PHONY: all run format clean
+.PHONY: all run format $(FORMAT_TARGETS) clean

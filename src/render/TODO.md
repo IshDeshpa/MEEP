@@ -1,5 +1,5 @@
 - [ ] write perf trace lib
 - [ ] put on GPU
-- [ ] standard format for objects as set of triangles in a file (.obj parser)
+- [x] standard format for objects as set of triangles in a file (.obj parser)
   - [ ] colors 
 - [ ] depth buffer

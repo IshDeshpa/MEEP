@@ -12,9 +12,10 @@
 
 using namespace glm;
 
-using vert4Array = std::vector<dvec4>;
+using Vert4Array = std::vector<dvec4>;
 using Triangle = uvec3; // 3 indices into the vertices arrays
-using tArray = std::vector<Triangle>;
+using Color = u8vec3; // 8-bit rgb
+using TArray = std::vector<Triangle>;
 
 struct Pose {
   dvec4 pos = dvec4(0, 0, 0, 1); // position
@@ -44,12 +45,17 @@ class Mesh{
 public:
   Mesh() = default; // empty, nothing loaded
   explicit Mesh(const std::string &path); // loads the OBJ at path
-  Mesh(vert4Array v, tArray t): verts(std::move(v)), tris(std::move(t)) {}
+  
+  // loads the OBJ at path and colors every triangle c
+  Mesh(const std::string &path, const Color &c): Mesh(path) { colors.assign(tris.size(), c); }
+  Mesh(Vert4Array v, TArray t, const Color &c = Color(255, 255, 255)): verts(std::move(v)), tris(std::move(t)) { colors.assign(tris.size(), c); }
 
-  vert4Array &getVerts() { return verts; }
-  const vert4Array &getVerts() const { return verts; }
-  tArray &getTris() { return tris; }
-  const tArray &getTris() const { return tris; }
+  Vert4Array &getVerts() { return verts; }
+  const Vert4Array &getVerts() const { return verts; }
+  TArray &getTris() { return tris; }
+  const TArray &getTris() const { return tris; }
+  std::vector<Color> &getColors(){return colors;}
+  const std::vector<Color> &getColors() const {return colors;}
 
   // copy of this mesh with every vertex multiplied by m
   Mesh transformed(const dmat4x4 &m) const;
@@ -62,8 +68,9 @@ public:
 
 private:
   // A set of triangles
-  vert4Array verts;
-  tArray tris;
+  Vert4Array verts;
+  TArray tris;
+  std::vector<Color> colors;
   std::string name;
   
   void load(const std::string &path);
@@ -75,11 +82,13 @@ class Obj : public Movable{
 public:
   Obj() = default;
   explicit Obj(const Pose &p): pose(p) {}
-  explicit Obj(const std::string &path): m(path) {}
-  Obj(const std::string &path, const dvec4 &pos, const dvec4 &look): m(path), pose(pos, look) {}
+  explicit Obj(const std::string &path): mesh(path) {}
+  Obj(const std::string &path, const dvec4 &pos, const dvec4 &look, const Color &color): mesh(path, color), pose(pos, look), color(color) {}
+  Obj(const std::string &path, const dvec4 &pos, const dvec4 &look): Obj(path, pos, look, Color(255, 255, 255)) {}
 
-  const Mesh &getMesh() const { return m; }
+  const Mesh &getMesh() const { return mesh; }
   const Pose &getPose() const { return pose; }
+  const Color &getColor() const {return color;}
 
   // mesh placed in the world by the object's pose
   Mesh toWorld() const;
@@ -88,6 +97,7 @@ public:
   dvec3 getPosition() const override { return dvec3(pose.pos); }
 
 protected:
-  Mesh m;
+  Mesh mesh;
   Pose pose;
+  Color color = Color(255, 255, 255);
 };

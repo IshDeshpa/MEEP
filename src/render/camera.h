@@ -16,10 +16,6 @@ using namespace glm;
 
 class Screen {
 public:
-  struct Pixel {
-    uint8_t a,b,c;
-  };
-
   Screen(): WIDTH(800), HEIGHT(800), framebuffer(800 * 800, {0, 0, 0}){}
 
   Screen(unsigned width, unsigned height): 
@@ -29,12 +25,12 @@ public:
   unsigned getHeight() const {return HEIGHT;}
   double getAspectRatio() const {return double(WIDTH)/HEIGHT;}
 
-  // screen[y][x] -> Pixel&  (row-major, y is the row)
-  Pixel* operator[](unsigned y) { return &framebuffer[size_t(y) * WIDTH]; }
-  const Pixel* operator[](unsigned y) const { return &framebuffer[size_t(y) * WIDTH]; }
+  // screen[y][x] -> Color&  (row-major, y is the row)
+  Color* operator[](unsigned y) { return &framebuffer[size_t(y) * WIDTH]; }
+  const Color* operator[](unsigned y) const { return &framebuffer[size_t(y) * WIDTH]; }
 
   void clear(){ 
-    std::fill(framebuffer.begin(), framebuffer.end(), Pixel{0, 0, 0}); 
+    std::fill(framebuffer.begin(), framebuffer.end(), Color{0, 0, 0}); 
     std::fill(depthbuffer.begin(), depthbuffer.end(), 1.0);
   }
 
@@ -42,7 +38,7 @@ public:
     FILE *f = std::fopen(path.c_str(), "wb");
     std::fprintf(f, "P6\n%d %d\n255\n", WIDTH, HEIGHT);
     for(int y=HEIGHT-1; y >= 0; y--){
-      std::fwrite(&framebuffer[y*WIDTH], sizeof(Pixel), WIDTH, f);
+      std::fwrite(&framebuffer[y*WIDTH], sizeof(Color), WIDTH, f);
     }
     std::fclose(f);
   }
@@ -50,7 +46,7 @@ public:
 private:
   const unsigned WIDTH; // pixels
   const unsigned HEIGHT; // pixels
-  std::vector<Pixel> framebuffer;
+  std::vector<Color> framebuffer;
   std::vector<double> depthbuffer;
 };
 

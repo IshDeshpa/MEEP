@@ -14,7 +14,7 @@ static double nearDist(const dvec4 &v){
 }
 
 // flag every vertex that is clipped by the near plane
-static std::vector<uint8_t> findClippedVerts(const vert4Array &verts){
+static std::vector<uint8_t> findClippedVerts(const Vert4Array &verts){
   std::vector<uint8_t> z_clip(verts.size());
   for(unsigned int i=0; i<verts.size(); i++){
     z_clip[i] = (verts[i].z < -verts[i].w) & 0x1;
@@ -23,7 +23,7 @@ static std::vector<uint8_t> findClippedVerts(const vert4Array &verts){
 }
 
 // classify each triangle by how many of its vertices are clipped
-static std::vector<TriClipNear> classifyTriangles(const tArray &tris, const std::vector<uint8_t> &z_clip){
+static std::vector<TriClipNear> classifyTriangles(const TArray &tris, const std::vector<uint8_t> &z_clip){
   std::vector<TriClipNear> tri_clip(tris.size());
   for(unsigned int i=0; i<tris.size(); i++){
     const Triangle &t = tris[i];
@@ -33,13 +33,13 @@ static std::vector<TriClipNear> classifyTriangles(const tArray &tris, const std:
 }
 
 // append a vertex and return its index
-static unsigned int pushVert(vert4Array &verts, const dvec4 &v){
+static unsigned int pushVert(Vert4Array &verts, const dvec4 &v){
   verts.push_back(v);
   return verts.size() - 1;
 }
 
 // one vertex clipped: the triangle becomes a quad, i.e. two triangles
-static void clipOneVertex(vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, tArray &out_tris){
+static void clipOneVertex(Vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, TArray &out_tris){
   const unsigned int idx[3] = {t.x, t.y, t.z};
 
   // find the two unclipped verts in the triangle's original winding order,
@@ -68,7 +68,7 @@ static void clipOneVertex(vert4Array &verts, const Triangle &t, const std::vecto
 }
 
 // two vertices clipped: just replace them with the new points
-static void clipTwoVertices(vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, tArray &out_tris){
+static void clipTwoVertices(Vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, TArray &out_tris){
   const unsigned int idx[3] = {t.x, t.y, t.z};
 
   const int ui = !z_clip[idx[0]] ? 0 : !z_clip[idx[1]] ? 1 : 2;
@@ -93,7 +93,7 @@ static void clipTwoVertices(vert4Array &verts, const Triangle &t, const std::vec
 }
 
 // reform a partially clipped triangle as zero, one, or two new triangles
-static void clipPartialTriangle(vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, tArray &out_tris){
+static void clipPartialTriangle(Vert4Array &verts, const Triangle &t, const std::vector<uint8_t> &z_clip, TArray &out_tris){
   const unsigned int nc = z_clip[t.x] + z_clip[t.y] + z_clip[t.z];
   assert(nc == 1 || nc == 2);
 
@@ -105,13 +105,17 @@ static void clipPartialTriangle(vert4Array &verts, const Triangle &t, const std:
 }
 
 void Camera::clip(Mesh &clip_mesh){
-  vert4Array &clip_space_verts = clip_mesh.getVerts();
-  const tArray tris = clip_mesh.getTris(); // copy, the mesh's triangles are replaced below
-  tArray &out_tris = clip_mesh.getTris();
+  Vert4Array &clip_space_verts = clip_mesh.getVerts();
+  const TArray tris = clip_mesh.getTris(); // copy, the mesh's triangles are replaced below
+  TArray &out_tris = clip_mesh.getTris();
+  const std::vector<Color> colors = clip_mesh.getColors(); // copy, replaced below like the triangles
+  std::vector<Color> &out_colors = clip_mesh.getColors();
 
   // reserve enough space just in case nothing gets clipped
   out_tris.clear();
   out_tris.reserve(tris.size());
+  out_colors.clear();
+  out_colors.reserve(tris.size());
 
   const std::vector<uint8_t> z_clip = findClippedVerts(clip_space_verts);
   const std::vector<TriClipNear> tri_clip = classifyTriangles(tris, z_clip);
@@ -124,5 +128,8 @@ void Camera::clip(Mesh &clip_mesh){
       const Triangle &t = tris[i];
       clipPartialTriangle(clip_space_verts, t, z_clip, out_tris);
     }
+
+    // every triangle emitted from tris[i] keeps its color
+    out_colors.resize(out_tris.size(), colors[i]);
   }
 }
