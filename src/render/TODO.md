@@ -1,0 +1,4 @@
+- [ ] write perf trace lib
+- [ ] colors
+- [ ] put on GPU
+- [ ] standard format for objects as set of triangles in a file
