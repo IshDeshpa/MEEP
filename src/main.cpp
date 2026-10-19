@@ -62,18 +62,37 @@ void testmain1(){
 void testmain2(){
   const vert4Array verts = triVerts();
 
-  // one copy of the obj at the centroid of each triangle
-  Mesh global;
-  for(unsigned int i = 0; i < verts.size(); i += 3){
-    const dvec4 pos = (verts[i] + verts[i + 1] + verts[i + 2]) / 3.0;
-    Obj o("obj/test.obj", dvec4(dvec3(pos), 1.0), dvec4(0.0, 0.0, -1.0, 0.0));
-    global = global + o.toWorld();
-  }
+  // one copy of the obj at the centroid of each triangle, all looking along `look`
+  auto buildScene = [&](const dvec4 &look){
+    Mesh global;
+    for(unsigned int i = 0; i < verts.size(); i += 3){
+      const dvec4 pos = (verts[i] + verts[i + 1] + verts[i + 2]) / 3.0;
+      Obj o("obj/test.obj", dvec4(dvec3(pos), 1.0), look);
+      global = global + o.toWorld();
+    }
+    return global;
+  };
 
-  // orbit the center of the scene, backed off far enough that its bounding sphere fits in the view
-  const dvec3 com = global.getCentroid();
+  // every cardinal look direction: +/-X, +/-Y, +/-Z
+  const std::vector<std::pair<std::string, dvec4>> looks = {
+    {"+x", { 1.0,  0.0,  0.0, 0.0}},
+    {"-x", {-1.0,  0.0,  0.0, 0.0}},
+    {"+y", { 0.0,  1.0,  0.0, 0.0}},
+    {"-y", { 0.0, -1.0,  0.0, 0.0}},
+    {"+z", { 0.0,  0.0,  1.0, 0.0}},
+    {"-z", { 0.0,  0.0, -1.0, 0.0}},
+  };
+
+  std::vector<Mesh> scenes;
+  for(const auto &l : looks) scenes.push_back(buildScene(l.second));
+
+  // frame all of the scenes with one camera: center on the first, back off far enough
+  // that the bounding sphere of the largest one fits in the view
+  const dvec3 com = scenes[0].getCentroid();
   double radius = 0.0;
-  for(const dvec4 &v : global.getVerts()) radius = std::max(radius, length(dvec3(v) - com));
+  for(const Mesh &s : scenes){
+    for(const dvec4 &v : s.getVerts()) radius = std::max(radius, length(dvec3(v) - com));
+  }
 
   const double fov_deg = 60.0;
   const double dist = 1.1 * radius / std::sin(radians(fov_deg) / 2.0);
@@ -87,11 +106,10 @@ void testmain2(){
     800,
     800);
 
-  for(int n = 0; n < 360; n++){
-    cam.capture(global, "out/mesh" + std::to_string(n) + ".ppm");
-    cam.orbit(com, 1.0);
+  for(unsigned int n = 0; n < looks.size(); n++){
+    cam.capture(scenes[n], "out/look" + looks[n].first + ".ppm");
   }
-  std::cout << "wrote mesh0.ppm .. mesh359.ppm" << std::endl;
+  std::cout << "wrote out/look+x.ppm .. out/look-z.ppm" << std::endl;
 }
 
 int main(){

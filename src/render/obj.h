@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <istream>
 #include <ostream>
 #include <string>
@@ -31,7 +32,11 @@ struct Pose {
 
   // orientation derived from look with fixed world up
   dquat lookQuat() const {
-    return quatLookAt(normalize(dvec3(look)), dvec3(0, 1, 0));
+    const dvec3 dir = normalize(dvec3(look));
+    // looking straight up/down is parallel to world up, which leaves roll undetermined,
+    // so pick z as the up reference (same as pitching +/-90 degrees about x)
+    const dvec3 up = std::abs(dir.y) > 1.0 - 1e-9 ? dvec3(0, 0, dir.y > 0 ? 1 : -1) : dvec3(0, 1, 0);
+    return quatLookAt(dir, up);
   }
 };
 
