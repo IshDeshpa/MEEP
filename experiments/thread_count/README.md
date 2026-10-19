@@ -69,6 +69,7 @@ Output directories are created automatically. Progress goes to stderr; use
 
 Other options: `--materials N` (any integer from 2 through 16),
 `--min-workers N` (lower bound for the automatic sweep),
+`--scheduler grid_stride|one_per_tile|both` (default `both`),
 `--access lookup|copy|both`, `--seed N`,
 `--device N`, `--warmup N`, and `--no-verify`. Dimensions must be positive and even.
 `--access` defaults to `lookup`, the complete dependent update.
@@ -84,6 +85,14 @@ memory immediately before allocation. Both checks and estimates are saved.
 Use `--materials 10`, `12`, or `14` for the larger tables and `--min-workers 32`
 to skip the very slow serial points. Results default to `results/world_sizes_N/`
 for the chosen material count, so separate sweeps do not overwrite one another.
+
+For an adaptive world-size sweep, use `make capacity-sweep` or
+`python3 sweep_capacity.py`. This runs only the `one_per_tile` kernel at eight
+materials, increasing width and length from 100 in steps of 100 with height 200.
+It stops at the first median tick time at or above `1000/60` ms. Each size uses
+five samples of 30 timed ticks after two warmups, with the same seed and block
+size 256. The runner saves current VRAM checks, verified native measurements,
+and a ticks/second summary under `results/capacity_8_height_200/`.
 
 ## Workload and scheduling
 
@@ -112,6 +121,8 @@ for the chosen material count, so separate sweeps do not overwrite one another.
 - `one_per_tile` runs a separate kernel with one update per thread and no loop.
   The final block can contain idle threads. CUDA schedules excess blocks as
   capacity becomes available; software does not allocate a thread on demand.
+  `--scheduler one_per_tile` selects this kernel alone; `grid_stride` selects
+  only the worker sweep, and the default `both` retains both comparisons.
 - The automatic sweep includes powers of two, approximately 1/4, 1/2, 1, 2,
   4, and 8 times estimated resident capacity, and the complete tile count.
   Capacity comes from `cudaOccupancyMaxActiveBlocksPerMultiprocessor` for the
@@ -213,6 +224,52 @@ compute-sanitizer --tool memcheck --error-exitcode 1 ./build/thread_count \
   --warmup 1 --ticks 3 --repeats 1 --output results/memcheck.csv
 ```
 
+## Measured 60 Hz capacity at height 200
+
+At eight materials with one thread per tile, the first 100-voxel step exceeding
+the 60 ticks/s budget is **1100×1100×200**: 30,250,000 neighborhoods, 18.2138 ms/tick,
+or 54.90 ticks/s. The preceding **1000×1000×200** world has 25,000,000 neighborhoods
+and runs at 15.0279 ms/tick, or 66.54 ticks/s. All five samples of the smaller
+world are below 16.6667 ms (14.9376–15.1497 ms); all five of the larger world are
+above it (18.0995–18.2813 ms). No size between those two was measured.
+
+Hardware/build match the RTX 2070 configuration below. This sweep uses five
+samples × 30 timed CUDA Graph ticks, two warmups, seed 42, block size 256, and only
+the existing `one_per_tile` lookup kernel. Every final tile is verified after
+every sample. The compiled lookup instructions remain identical to the earlier
+sweeps. These are simulation-kernel tick rates; rendering and partition changes
+are excluded. The display GPU and its clocks were not isolated.
+
+| World | Neighborhoods | Median ms/tick | Ticks/s | L1 sector hits | L2 sector hits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100×100×200 | 250,000 | 0.1397 | 7156.05 | 0.0143% | 7.14% |
+| 200×200×200 | 1,000,000 | 0.6732 | 1485.49 | 0.0147% | 7.01% |
+| 300×300×200 | 2,250,000 | 1.3354 | 748.82 | 0.0151% | 6.92% |
+| 400×400×200 | 4,000,000 | 2.3997 | 416.72 | 0.0152% | 6.95% |
+| 500×500×200 | 6,250,000 | 3.8274 | 261.28 | 0.0149% | 7.34% |
+| 600×600×200 | 9,000,000 | 5.3357 | 187.42 | 0.0149% | 7.21% |
+| 700×700×200 | 12,250,000 | 7.3870 | 135.37 | 0.0151% | 7.18% |
+| 800×800×200 | 16,000,000 | 9.5935 | 104.24 | 0.0150% | 7.66% |
+| 900×900×200 | 20,250,000 | 12.1680 | 82.18 | 0.0149% | 7.18% |
+| 1000×1000×200 | 25,000,000 | 15.0279 | 66.54 | 0.0150% | 7.23% |
+| 1100×1100×200 | 30,250,000 | 18.2138 | 54.90 | 0.0151% | 7.40% |
+
+The [timing CSV](baselines/rtx2070_capacity_8_height_200_2026-10-13.csv),
+[summary](baselines/rtx2070_capacity_8_height_200_summary_2026-10-13.csv),
+[VRAM audit](baselines/rtx2070_capacity_8_height_200_memory_2026-10-13.csv),
+[cache summary](baselines/rtx2070_capacity_8_height_200_cache_2026-10-13.csv), and
+[raw counters](baselines/rtx2070_capacity_8_height_200_counters_2026-10-13/)
+preserve these measurements. Before each timing case, NVIDIA-SMI reported
+6,512 MiB free and 1,495 MiB used. Table + buffers grow from 65.91 to 294.79 MiB,
+and every case passes the additional 256 MiB headroom check and CUDA's query.
+Profiling separately checks available memory before every world; cache rates
+aggregate ten warmed ticks using the settings described below.
+
+`plot_capacity.py` plots tick time against world width, with active thread count
+on the upper axis. SP/resident-capacity vertical lines refer to that thread axis;
+the SP count is a reference rather than a resident-thread limit. The graph also
+labels the fastest median and the first 60 Hz budget crossing.
+
 ## Measured world and material sweeps
 
 The 2026-10-13 sweeps cover five worlds at 8, 10, 12, and 14 materials. The
@@ -307,7 +364,8 @@ L1/TEX per SM on Turing; that reservation does not mean the kernel uses shared
 memory. See NVIDIA's [Turing cache configuration](https://docs.nvidia.com/cuda/turing-tuning-guide/index.html#unified-shared-memory-l1-texture-cache).
 
 Cache rates come from separate Nsight Compute 2024.3.1 runs at each world's
-winning thread count and scheduling kernel. Ten ticks are profiled after two
+winning configuration, or its fixed one-per-tile configuration in the capacity
+sweep. Ten ticks are profiled after two
 warmups. Application replay repeats setup/warmup for each of three collection
 passes; `--cache-control none` prevents the profiler's usual cache flush, and
 `--clock-control none` leaves clocks unchanged. The profiler's instrumented
@@ -348,6 +406,13 @@ done
 python3 plot.py baselines/rtx2070_world_sizes_10_12_14_2026-10-13.csv --compare-materials \
   --cache-summary baselines/rtx2070_world_sizes_10_12_14_cache_2026-10-13.csv \
   --output results/world_sizes_10_12_14/tick_times_and_cache.png
+
+# Height 200: one thread per tile, increasing X×X until the 60 ticks/s budget.
+python3 sweep_capacity.py
+python3 profile_cache.py results/capacity_8_height_200/measurements.csv
+python3 plot_capacity.py results/capacity_8_height_200/measurements.csv \
+  --cache-summary results/capacity_8_height_200/cache/cache_summary.csv \
+  --output results/capacity_8_height_200/tick_times_and_cache.png
 ```
 
 On WSL, Windows must permit GPU counter access. If profiling reports

@@ -1,5 +1,8 @@
 # New experiment outputs; existing tracked CPU results are preserved.
 experiments/thread_count/build/
 experiments/thread_count/results/
+experiments/transition_variations/build/
+experiments/transition_variations/results/
 __pycache__/
 *.pyc
+AGENTS.md

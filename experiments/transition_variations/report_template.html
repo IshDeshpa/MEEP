@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEEP transition comparisons</title>
+<style>
+:root{font-family:Inter,system-ui,-apple-system,sans-serif;color:#203346;background:#eef2f6;font-size:15px}
+*{box-sizing:border-box}body{margin:0}main{max-width:1360px;margin:auto;padding:36px 26px 60px}
+header{margin-bottom:26px}.eyebrow{font-size:12px;letter-spacing:.15em;font-weight:750;color:#007f86;text-transform:uppercase}
+h1{font-size:36px;letter-spacing:-.035em;margin:8px 0 10px}h2{font-size:21px;letter-spacing:-.02em;margin:0 0 16px}h3{font-size:16px}
+p{line-height:1.65;color:#536679}.sub{max-width:950px;margin:0}.card{background:white;border:1px solid #dce4ec;border-radius:14px;padding:24px;margin:22px 0;box-shadow:0 3px 14px #20334605}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:24px 0}.stat{background:white;border:1px solid #dce4ec;border-radius:11px;padding:18px}.stat strong{font-size:25px;display:block}.stat span{font-size:12px;color:#607487}
+ul.findings{padding-left:22px;margin-bottom:0}.findings li{padding:7px 0;line-height:1.65}.note{border-left:3px solid #d28b27;background:#fff9ef;padding:12px 16px;border-radius:4px;line-height:1.65;font-size:13px}
+.controls{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0}.controls label{font-size:12px;color:#607487;font-weight:650}.controls select{display:block;margin-top:6px;font:inherit;font-size:13px;color:#203346;background:#fff;border:1px solid #c9d5e1;padding:9px 28px 9px 10px;border-radius:7px;max-width:330px}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin:12px 0;font-size:12px}.legend span::before{content:"";display:inline-block;width:19px;height:3px;background:var(--color);margin-right:7px;vertical-align:middle}.chart{width:100%;overflow:auto}.chart svg{width:100%;min-width:620px;height:auto}
+.scroll{overflow:auto;max-height:470px}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:11px 13px;border-bottom:1px solid #e5ebf1;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}th{color:#607487;font-size:12px;background:#f6f8fb;position:sticky;top:0}th:first-child,td:first-child{text-align:left}td.best{color:#00786f;font-weight:750;background:#edf9f6}
+img{width:100%;height:auto}a{color:#007f86;text-decoration:none}a:hover{text-decoration:underline}.meta{font-size:12px;color:#64788b}details{line-height:1.7}details li{margin:9px 0}.download{display:inline-block;background:#007f86;color:white;padding:10px 15px;border-radius:7px;font-size:13px;font-weight:650;margin-top:14px}
+@media(max-width:700px){main{padding:22px 14px}h1{font-size:29px}.stats{grid-template-columns:repeat(2,1fr)}.card{padding:16px}}
+</style>
+<main>
+<header><div class="eyebrow">MEEP · CUDA experiment</div><h1>Compare the transition, then the scale.</h1>
+<p class="sub">Five update variants, four material counts, six world sizes. Start with matched comparisons, then change one axis at a time. Runtime is the time for a complete world step.</p>
+<p class="meta">Cube: one 2×2×2 lookup. Face: six 2×2×1 lookups. Edge: twelve 2×1×1 lookups. Sequential keys use the updated temporary tile; independent keys use the original tile. Later proposals overwrite earlier values in both modes.</p>
+<a class="download" href="comparison_data.csv" download>Download all comparison data</a></header>
+<div class="stats"><div class="stat"><strong>__CASE_COUNT__</strong><span>verified timing configurations</span></div><div class="stat"><strong>__MEASURED_COUNT__</strong><span>complete hardware profiles</span></div><div class="stat"><strong>6.25–25M</strong><span>non-overlapping 2×2×2 tiles</span></div><div class="stat"><strong>19</strong><span>requested hardware metrics</span></div></div>
+<section class="card"><h2>What the measurements show</h2><ul class="findings">__FINDINGS__</ul></section>
+<section class="card"><h2>Explore one axis at a time</h2><p>All five curves share the selected world/material condition. Change the horizontal axis to compare world size or element count. Hover over a point for its measured value.</p>
+<div class="controls">
+<label>Horizontal axis<select id="axis"><option value="world">World X = Z, Y fixed at 200</option><option value="materials">Material count</option></select></label>
+<label><span id="fixed-label">Material count</span><select id="fixed"></select></label>
+<label>Metric<select id="metric"></select></label>
+<label>Scale<select id="scale"><option value="linear">Linear</option><option value="log">Logarithmic</option></select></label>
+<label>Update configurations<select id="group"><option value="all">All five</option><option value="sequential">Cube + sequential</option><option value="independent">Cube + independent</option><option value="face">Both face modes</option><option value="edge">Both edge modes</option></select></label>
+</div><div class="legend" id="legend"></div><div class="chart" id="chart"></div><p class="meta" id="chart-note"></p>
+<div class="scroll"><table id="comparison-table"></table></div></section>
+<section class="card"><h2>Reading the comparisons</h2><p>World size changes the number of tiles and the two world-buffer sizes. It does not change the per-tile geometry or the LUT size. Doubling X and Z gives four times as many tiles. Per-tile counters remove this work-volume effect so that transition and material differences stay visible.</p>
+<div class="note"><strong>Keep these distinctions in view.</strong> Independent face/edge LUT loads remain volatile so all six/twelve lookups execute. Cube/sequential loads are ordinary cached loads. Mode comparisons therefore include cache-policy and instruction differences. L1/L2 hit rates cover the whole kernel (world buffers and LUT, including writes), rather than isolated LUT accesses. DRAM bytes come from hardware counters. Warp instructions are warp-level counts, not per-thread instruction counts.</div></section>
+<section class="card"><h2>Instructions, caches, and GPU activity</h2><ul class="findings">__COUNTER_FINDINGS__</ul></section>
+__FIGURES__
+<section class="card"><h2>Measurement context</h2><details open><summary>How this sweep was measured</summary><ul>
+<li>NVIDIA GeForce RTX 2070, 36 SMs, 8 GiB VRAM, 4 MiB L2. CUDA 12.6, -O3 C++17, sm_75. No explicit shared-memory staging. One launched thread per tile, padded to blocks of 256.</li>
+<li>Worlds: X×200×X for X = 500, 600, 700, 800, 900, 1000. Material counts: 8, 10, 12, 14. Tile count is (X/2)×(200/2)×(X/2).</li>
+<li>Native timing: five samples of ten whole-world ticks, after two warmup ticks. Each sample first preheats the GPU for at least 500 ms, then restores the seeded world before the warmup/timed sequence. CUDA graphs reduce host submission gaps. CPU reference calculation, allocations, initialization, transfers, preheating, and comparisons are outside the timed event interval. Every final output tile is CPU/GPU checked after every native sample.</li>
+<li>Hardware profiling: five warmed ticks, ordinary direct launches, application replay, cache-control none, clock-control none. The profiler selects only the timed update kernel, skipping warmups and excluding the separately named preheat and initialization kernels. The source timing is preserved; instrumented event times are diagnostics. Replay reuses the native verification instead of repeating the expensive CPU reference.</li>
+<li>Raw counts are averaged per complete tick, then divided by tile count where indicated. Cache percentages use the sum of hit sectors divided by the sum of hit + miss sectors. Other percentages are means across profiled ticks. Missing counters appear as unavailable, not zero.</li>
+<li>Each world/material case passes live VRAM checks. Required allocations and current free/used VRAM are saved with the measurements. Case order is deterministically shuffled (seed 42); each sample starts from the same seeded initial state. GPU display activity and clocks are not externally locked.</li>
+<li>This is a fixed-partition scheduling/LUT experiment. The rules are deterministic synthetic permutations. There are no shifted Margolus partitions, cross-tile interactions, rendering, or physical material rules; different update variants need not implement equivalent automata.</li>
+</ul></details><p class="meta">All charts are standalone artifacts. This HTML embeds its data and images and works offline. SVG/PDF exports and comparison_data.csv are provided beside it.</p></section>
+</main>
+<script id="dataset" type="application/json">__DATA__</script>
+<script>
+const data=JSON.parse(document.getElementById('dataset').textContent);
+const labels=['Cube','Face sequential','Face independent','Edge sequential','Edge independent'];
+const colors=['#243b53','#007f86','#50a8bf','#c27816','#d35b60'];
+const widths=[...new Set(data.map(r=>+r.world_x))].sort((a,b)=>a-b);
+const materials=[...new Set(data.map(r=>+r.materials))].sort((a,b)=>a-b);
+const definitions=[
+ ['Runtime','median_ms_per_tick','Whole-world tick time','ms',1],
+ ['Runtime','ticks_per_second','Whole-world ticks per second','ticks/s',1],
+ ['Runtime','aggregate_ns_per_tile','Reciprocal aggregate throughput per tile','ns/tile',1],
+ ['Instructions','warp_instructions_per_tile','Warp instructions per tile','warp inst/tile',1],
+ ['Instructions','warp_instructions_per_tick','Warp instructions per world step','million warp inst',1e-6],
+ ['Memory traffic','dram_read_bytes_per_tile','DRAM reads per tile','B/tile',1],
+ ['Memory traffic','dram_write_bytes_per_tile','DRAM writes per tile','B/tile',1],
+ ['Memory traffic','dram_total_bytes_per_tile','DRAM reads + writes per tile','B/tile',1],
+ ['Memory traffic','dram_read_bytes_per_tick','DRAM reads per world step','MB/tick',1e-6],
+ ['Caches','l1_sector_hit_percent','L1/TEX sector hit rate','%',1],
+ ['Caches','l2_sector_hit_percent','L2 sector hit rate','%',1],
+ ['Caches','l1_total_sectors_per_tile','L1/TEX total sector traffic per tile','sectors/tile',1],
+ ['Caches','l2_total_sectors_per_tile','L2 total sector traffic per tile','sectors/tile',1],
+ ['Caches','l1_hit_sectors_per_tile','L1/TEX hit sectors per tile','sectors/tile',1],
+ ['Caches','l1_miss_sectors_per_tile','L1/TEX miss sectors per tile','sectors/tile',1],
+ ['Caches','l2_hit_sectors_per_tile','L2 hit sectors per tile','sectors/tile',1],
+ ['Caches','l2_miss_sectors_per_tile','L2 miss sectors per tile','sectors/tile',1],
+ ['GPU activity','achieved_occupancy_percent','Achieved warp occupancy','%',1],
+ ['GPU activity','sm_peak_throughput_percent','SM throughput / peak sustained','%',1],
+ ['GPU activity','sm_active_percent','SM active-cycle percentage','%',1],
+ ['GPU activity','dram_peak_throughput_percent','DRAM throughput / peak sustained','%',1],
+ ['GPU activity','issue_active_percent','Issue-active percentage','%',1],
+ ['GPU activity','eligible_warps_per_scheduler','Eligible warps per scheduler','warps/scheduler',1],
+ ['GPU activity','active_warps_per_scheduler','Active warps per scheduler','warps/scheduler',1],
+ ['Warp states','stall_long_scoreboard_percent','Long-scoreboard stall share','%',1],
+ ['Warp states','stall_short_scoreboard_percent','Short-scoreboard stall share','%',1],
+ ['Warp states','stall_math_pipe_percent','Math-pipe throttle share','%',1],
+ ['Warp states','stall_not_selected_percent','Not-selected share','%',1]
+];
+const $=id=>document.getElementById(id);
+let lastMaterial=materials[0],lastWidth=widths[widths.length-1];
+let groupNode=null;
+for(const definition of definitions){
+ if(!groupNode||groupNode.label!==definition[0]){groupNode=document.createElement('optgroup');groupNode.label=definition[0];$('metric').append(groupNode)}
+ const option=document.createElement('option');option.value=definition[1];option.textContent=definition[2];groupNode.append(option);
+}
+function populateFixed(){
+ const world=$('axis').value==='world';$('fixed-label').textContent=world?'Material count':'World X = Z';
+ $('fixed').replaceChildren();
+ for(const value of world?materials:widths){const option=document.createElement('option');option.value=value;option.textContent=world?value+' materials':value+'×200×'+value;$('fixed').append(option)}
+ $('fixed').value=world?lastMaterial:lastWidth;
+}
+function finite(value){return value!==''&&value!==undefined&&value!==null&&Number.isFinite(+value)}
+function format(value){if(!Number.isFinite(value))return '—';if(value===0)return '0';return value>=10000?value.toLocaleString(undefined,{maximumFractionDigits:0}):value.toLocaleString(undefined,{maximumFractionDigits:value<1?4:3})}
+function svgElement(name,attributes={},text){const node=document.createElementNS('http://www.w3.org/2000/svg',name);for(const [key,value]of Object.entries(attributes))node.setAttribute(key,value);if(text!==undefined)node.textContent=text;return node}
+function render(){
+ const world=$('axis').value==='world',fixed=+$('fixed').value,field=$('metric').value;
+ if(world)lastMaterial=fixed;else lastWidth=fixed;
+ const definition=definitions.find(d=>d[1]===field),unit=definition[3],factor=definition[4],log=$('scale').value==='log';
+ const selected=data.filter(r=>+(world?r.materials:r.world_x)===fixed),xs=world?widths:materials;
+ const category=$('group').value;
+ const shown=labels.filter(label=>category==='all'||(category==='sequential'?(label==='Cube'||label.endsWith('sequential')):category==='independent'?(label==='Cube'||label.endsWith('independent')):label.toLowerCase().startsWith(category)));
+ const values=selected.filter(r=>shown.includes(r.config)&&finite(r[field])&&(!log||+r[field]>0)).map(r=>+r[field]*factor);
+ const svg=svgElement('svg',{viewBox:'0 0 1120 450',role:'img','aria-label':definition[2]});
+ const left=90,right=1080,top=25,bottom=380;
+ let low=log?Math.min(...values)*.8:0,high=values.length?Math.max(...values)*1.12:1;
+ if(!values.length)low=log?.01:0;
+ if(!log&&unit==='%')high=100;
+ if(high<=low)high=low+1;
+ const x=value=>left+(value-xs[0])/(xs[xs.length-1]-xs[0]||1)*(right-left);
+ const y=value=>bottom-(log?(Math.log(value)-Math.log(low))/(Math.log(high)-Math.log(low)):(value-low)/(high-low))*(bottom-top);
+ for(let i=0;i<=5;i++){
+  const value=log?Math.exp(Math.log(low)+(Math.log(high)-Math.log(low))*i/5):low+(high-low)*i/5,position=y(value);
+  svg.append(svgElement('line',{x1:left,x2:right,y1:position,y2:position,stroke:'#e6edf3'}));
+  svg.append(svgElement('text',{x:left-12,y:position+4,'text-anchor':'end',fill:'#607487','font-size':12},format(value)));
+ }
+ for(const value of xs){svg.append(svgElement('text',{x:x(value),y:bottom+26,'text-anchor':'middle',fill:'#526476','font-size':13},String(value)))}
+ svg.append(svgElement('text',{x:left,y:15,fill:'#607487','font-size':12},unit));
+ svg.append(svgElement('text',{x:(left+right)/2,y:430,'text-anchor':'middle',fill:'#526476','font-size':13},world?'World X = Z, Y = 200':'Material count'));
+ $('legend').replaceChildren();
+ for(const label of shown){
+  const color=colors[labels.indexOf(label)],legend=document.createElement('span');legend.textContent=label;legend.style.setProperty('--color',color);$('legend').append(legend);
+  const series=selected.filter(r=>r.config===label&&finite(r[field])&&(!log||+r[field]>0)).sort((a,b)=>+(world?a.world_x:a.materials)-+(world?b.world_x:b.materials));
+  if(!series.length)continue;
+  const points=series.map(r=>[x(+(world?r.world_x:r.materials)),y(+r[field]*factor)]);
+  svg.append(svgElement('polyline',{points:points.map(p=>p.join(',')).join(' '),fill:'none',stroke:color,'stroke-width':2.8,'stroke-dasharray':label.endsWith('independent')?'7 4':''}));
+  for(let i=0;i<series.length;i++){
+   const row=series[i],point=svgElement('circle',{cx:points[i][0],cy:points[i][1],r:5,fill:color,stroke:'white','stroke-width':1.5});
+   point.append(svgElement('title',{},`${label}\n${row.world_x}×${row.world_y}×${row.world_z} · ${row.materials} materials\n${definition[2]}: ${format(+row[field]*factor)} ${unit}\nNative tick median: ${format(+row.median_ms_per_tick)} ms`));svg.append(point);
+  }
+ }
+ $('chart').replaceChildren(svg);
+ $('chart-note').textContent=field==='aggregate_ns_per_tile'?'This is reciprocal aggregate GPU throughput, not the latency of one tile.':(log?'Zero/missing values are omitted on logarithmic axes. ':'')+(field.startsWith('l1')||field.startsWith('l2')?'Cache counters aggregate world buffers and LUT, including writes.':field.includes('stall')?'Warp-state percentages alone do not identify a performance bottleneck.':'The table below gives the exact values for this matched comparison.');
+ const table=$('comparison-table');table.replaceChildren();const head=document.createElement('tr');
+ for(const title of [world?'World X×200×Z':'Materials',...shown]){const th=document.createElement('th');th.textContent=title;head.append(th)}
+ const thead=document.createElement('thead');thead.append(head);table.append(thead);const body=document.createElement('tbody');
+ for(const value of xs){
+  const tr=document.createElement('tr'),name=document.createElement('td');name.textContent=world?`${value}×200×${value}`:value;tr.append(name);
+  const cells=shown.map(label=>selected.find(r=>r.config===label&&+(world?r.world_x:r.materials)===value));
+  const cellValues=cells.map(r=>r&&finite(r[field])?+r[field]*factor:NaN);
+  const best=field==='ticks_per_second'?Math.max(...cellValues.filter(Number.isFinite)):Math.min(...cellValues.filter(Number.isFinite));
+  cellValues.forEach(v=>{const td=document.createElement('td');td.textContent=format(v)+' '+(Number.isFinite(v)?unit:'');if((field==='median_ms_per_tick'||field==='ticks_per_second')&&v===best)td.className='best';tr.append(td)});body.append(tr);
+ }table.append(body);
+}
+$('axis').addEventListener('change',()=>{populateFixed();render()});for(const id of ['fixed','metric','scale','group'])$(id).addEventListener('change',render);
+populateFixed();render();
+</script>
+</html>

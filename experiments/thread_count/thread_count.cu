@@ -62,7 +62,7 @@ struct Options {
     uint64_t min_workers = 1;
     std::vector<unsigned> block_sizes{256};
     std::vector<uint64_t> workers;  // Empty means an automatic sweep.
-    std::string access = "lookup", launch = "graph", output = "results/latest.csv";
+    std::string access = "lookup", launch = "graph", scheduler = "both", output = "results/latest.csv";
     bool verify = true;
 };
 
@@ -104,6 +104,7 @@ void print_help() {
         "  --block-sizes LIST     Comma-separated block sizes (default 256)\n"
         "  --workers LIST         Requested grid-stride threads; default auto sweep\n"
         "  --min-workers N        Lower bound for automatic sweep (default 1)\n"
+        "  --scheduler MODE       grid_stride, one_per_tile, or both (default both)\n"
         "  --ticks N              Timed ping-pong ticks per sample (default 10)\n"
         "  --warmup N             Untimed ticks per sample; may be 0 (default 2)\n"
         "  --repeats N            Samples per configuration (default 3)\n"
@@ -116,7 +117,7 @@ void print_help() {
         "  --output PATH          CSV path or - for stdout (default results/latest.csv)\n"
         "  --no-verify            Skip full final-state checks (default: verify)\n"
         "  --help                 Print this help without requiring a GPU\n"
-        "Each block size also runs a one-thread-per-tile kernel.\n";
+        "By default each block size also runs a one-thread-per-tile kernel.\n";
 }
 
 Options parse_options(int argc, char** argv) {
@@ -139,6 +140,7 @@ Options parse_options(int argc, char** argv) {
         else if (flag == "--device") options.device = small_integer(next(), true);
         else if (flag == "--access") options.access = next();
         else if (flag == "--launch") options.launch = next();
+        else if (flag == "--scheduler") options.scheduler = next();
         else if (flag == "--output") options.output = next();
         else if (flag == "--workers") options.workers = integer_list(next());
         else if (flag == "--min-workers") options.min_workers = positive_integer(next());
@@ -159,6 +161,9 @@ Options parse_options(int argc, char** argv) {
         throw std::invalid_argument("access must be lookup, copy, or both");
     if (options.launch != "graph" && options.launch != "direct")
         throw std::invalid_argument("launch must be graph or direct");
+    if (options.scheduler != "both" && options.scheduler != "grid_stride" &&
+        options.scheduler != "one_per_tile")
+        throw std::invalid_argument("scheduler must be grid_stride, one_per_tile, or both");
     if (options.output.empty()) throw std::invalid_argument("empty output path");
     return options;
 }
@@ -364,20 +369,24 @@ void sweep(const Options& options, const DeviceInfo& info, uint64_t tiles,
             for (auto& state : expected) state = meep::transition(state, space);
     }
     for (unsigned block : options.block_sizes) {
-        const uint64_t capacity = uint64_t{static_cast<unsigned>(active_blocks<Lookup, false>(block))} *
-                                 block * info.properties.multiProcessorCount;
-        const auto workers = options.workers.empty() ? meep::sweep_workers(tiles, capacity) : options.workers;
-        std::set<std::pair<uint64_t, unsigned>> visited;
-        for (uint64_t requested : workers) {
-            if (options.workers.empty() && requested < options.min_workers) continue;
-            const auto launch = meep::launch_for(requested, block);
-            if (!visited.emplace(launch.blocks, launch.block_size).second) continue;
-            benchmark_configuration<Lookup, false>(options, info, block, requested, launch, tiles,
+        if (options.scheduler != "one_per_tile") {
+            const uint64_t capacity = uint64_t{static_cast<unsigned>(active_blocks<Lookup, false>(block))} *
+                                     block * info.properties.multiProcessorCount;
+            const auto workers = options.workers.empty() ? meep::sweep_workers(tiles, capacity) : options.workers;
+            std::set<std::pair<uint64_t, unsigned>> visited;
+            for (uint64_t requested : workers) {
+                if (options.workers.empty() && requested < options.min_workers) continue;
+                const auto launch = meep::launch_for(requested, block);
+                if (!visited.emplace(launch.blocks, launch.block_size).second) continue;
+                benchmark_configuration<Lookup, false>(options, info, block, requested, launch, tiles,
+                    lut_bytes, initial, expected, world_a, world_b, table, stream, output);
+            }
+        }
+        if (options.scheduler != "grid_stride") {
+            const auto launch = meep::launch_for(tiles, block);
+            benchmark_configuration<Lookup, true>(options, info, block, tiles, launch, tiles,
                 lut_bytes, initial, expected, world_a, world_b, table, stream, output);
         }
-        const auto launch = meep::launch_for(tiles, block);
-        benchmark_configuration<Lookup, true>(options, info, block, tiles, launch, tiles,
-            lut_bytes, initial, expected, world_a, world_b, table, stream, output);
     }
 }
 

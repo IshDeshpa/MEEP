@@ -100,6 +100,7 @@ def main():
             "--csv", "--page", "raw", "--log-file", str(raw),
             str(binary), "--world", x_dim, y_dim, z_dim,
             "--materials", materials, "--access", "lookup", "--launch", "direct",
+            "--scheduler", best["scheduler"],
             "--workers", best["requested_workers"], "--block-sizes", best["requested_block_size"],
             "--ticks", str(args.ticks), "--warmup", str(args.warmup), "--repeats", "1",
             "--device", str(args.device), "--output", str(timing),
