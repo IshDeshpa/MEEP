@@ -104,7 +104,11 @@ static void clipPartialTriangle(vert4Array &verts, const Triangle &t, const std:
   }
 }
 
-void Camera::clip(vert4Array &clip_space_verts, const tArray &tris, tArray &out_tris){
+void Camera::clip(Mesh &clip_mesh){
+  vert4Array &clip_space_verts = clip_mesh.getVerts();
+  const tArray tris = clip_mesh.getTris(); // copy, the mesh's triangles are replaced below
+  tArray &out_tris = clip_mesh.getTris();
+
   // reserve enough space just in case nothing gets clipped
   out_tris.clear();
   out_tris.reserve(tris.size());

@@ -37,14 +37,13 @@ static void rasterize(const vert4Array &screen_space_verts, const tArray &screen
   }
 }
 
-void Camera::capture(const vert4Array &world_verts, const tArray &world_tris, const std::string &out_path){
+void Camera::capture(const Mesh &world_mesh, const std::string &out_path){
   screen.clear();
-  vert4Array out_verts;
-  worldToClip(world_verts, out_verts);
-  
-  tArray screen_tris;
-  // modifies clip space verts, generates new clipped triangles
-  clip(out_verts, world_tris, screen_tris);
+  Mesh clip_mesh = worldToClip(world_mesh);
+
+  // appends new verts to the clip space mesh, replaces its triangles with the clipped ones
+  clip(clip_mesh);
+  vert4Array &out_verts = clip_mesh.getVerts();
 
   // clip to NDC
   std::for_each(out_verts.begin(), out_verts.end(), clipVertToNDC);
@@ -55,56 +54,12 @@ void Camera::capture(const vert4Array &world_verts, const tArray &world_tris, co
   });
 
   // rasterize
-  rasterize(out_verts, screen_tris, screen); 
+  rasterize(out_verts, clip_mesh.getTris(), screen); 
 
   // write out
   screen.writePPM(out_path);
 }
 
-void Camera::worldToClip(const vert4Array &world_verts, vert4Array &out){
-  out.resize(world_verts.size());
-
-  const dmat4x4 pv = getP() * getV();
-  for(unsigned int i=0; i<out.size(); i++){
-    out[i] = pv * world_verts[i];
-  }
-}
-
-// generic transform
-void Camera::transform(dmat4x4 &m){
-  pose.pos = (m * pose.pos);
-  pose.look = normalize(m * pose.look);
-}
-
-// Rotation q about pivot: T(pivot) * R * T(-pivot).
-// pos is a point (w=1) and look is a direction (w=0), so transform() translates
-// only the position while rotating both.
-static dmat4x4 rotateAboutMat(const dvec3 &pivot, const dquat &q){
-  return glm::translate(dmat4x4(1.0), pivot)
-       * mat4_cast(q)
-       * glm::translate(dmat4x4(1.0), -pivot);
-}
-
-// Orbit about the pivot `pos` around the world up axis.
-void Camera::orbit(dvec3 &pos, double deg){
-  dmat4x4 m = rotateAboutMat(pos, angleAxis(glm::radians(deg), dvec3(0, 1, 0)));
-  transform(m);
-}
-
-void Camera::translate(dvec3 &trans){
-  dmat4x4 m = glm::translate(dmat4x4(1.0), trans);
-  transform(m);
-}
-
-// Rotate in place: orbit about the camera's own position, so pos is fixed and look turns.
-void Camera::rotate(dquat &q){
-  dmat4x4 m = rotateAboutMat(dvec3(pose.pos), q);
-  transform(m);
-}
-
-// deg = (pitch about x, yaw about y, roll about z) in degrees.
-// Roll has no effect on the view since getLookQuat() derives orientation from look with fixed up.
-void Camera::rotateDegAxis(dvec3 &deg){
-  dquat q = dquat(glm::radians(deg));
-  rotate(q);
+Mesh Camera::worldToClip(const Mesh &world_mesh){
+  return world_mesh.transformed(getP() * getV());
 }

@@ -5,8 +5,9 @@
 #include <camera.h>
 #include <obj.h>
 
-void testmain1(){
-  vert4Array verts = {
+// 3 triangles, 3 verts each
+static vert4Array triVerts(){
+  return {
     // triangle 0: in front, centered
     {-1.0, -1.0, 0.0, 1.0},
     { 1.0, -1.0, 0.0, 1.0},
@@ -20,6 +21,10 @@ void testmain1(){
     {-1.5, -1.5, 2.0, 1.0},
     {-2.25, 0.0, 2.0, 1.0},
   };
+}
+
+void testmain1(){
+  vert4Array verts = triVerts();
 
   // counter-clockwise winding
   tArray tris = {
@@ -27,6 +32,8 @@ void testmain1(){
     {3, 4, 5},
     {6, 7, 8},
   };
+
+  Mesh mesh(verts, tris);
 
   // center of mass of the (equal-weight) vertices
   dvec3 com(0.0);
@@ -46,19 +53,45 @@ void testmain1(){
     800);
 
   for(int n = 0; n < 360; n++){
-    cam.capture(verts, tris, "out/test" + std::to_string(n) + ".ppm");
+    cam.capture(mesh, "out/test" + std::to_string(n) + ".ppm");
     cam.orbit(com, 1.0);
   }
   std::cout << "wrote test0.ppm .. test359.ppm" << std::endl;
 }
 
 void testmain2(){
-  std::ifstream f("obj/test.obj");
-  Obj o;
-  f >> o;
+  const vert4Array verts = triVerts();
 
-  std::ofstream of("obj/test_clone.obj");
-  of << o;
+  // one copy of the obj at the centroid of each triangle
+  Mesh global;
+  for(unsigned int i = 0; i < verts.size(); i += 3){
+    const dvec4 pos = (verts[i] + verts[i + 1] + verts[i + 2]) / 3.0;
+    Obj o("obj/test.obj", dvec4(dvec3(pos), 1.0), dvec4(0.0, 0.0, -1.0, 0.0));
+    global = global + o.toWorld();
+  }
+
+  // orbit the center of the scene, backed off far enough that its bounding sphere fits in the view
+  const dvec3 com = global.getCentroid();
+  double radius = 0.0;
+  for(const dvec4 &v : global.getVerts()) radius = std::max(radius, length(dvec3(v) - com));
+
+  const double fov_deg = 60.0;
+  const double dist = 1.1 * radius / std::sin(radians(fov_deg) / 2.0);
+
+  Camera cam(
+    0.1,
+    3.0 * dist,
+    fov_deg,
+    dvec4(com + dvec3(0.0, 0.0, dist), 1.0),
+    dvec4(0.0, 0.0, -1.0, 0.0),
+    800,
+    800);
+
+  for(int n = 0; n < 360; n++){
+    cam.capture(global, "out/mesh" + std::to_string(n) + ".ppm");
+    cam.orbit(com, 1.0);
+  }
+  std::cout << "wrote mesh0.ppm .. mesh359.ppm" << std::endl;
 }
 
 int main(){

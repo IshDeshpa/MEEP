@@ -54,13 +54,8 @@ private:
   std::vector<double> depthbuffer;
 };
 
-class Camera {
+class Camera : public Movable {
 public:
-  struct CameraPose {
-    dvec4 pos; // position
-    dvec4 look; // look direction
-  };
-
   Camera(): Camera(0.1, 100, 34, dvec4(0, 0, 0, 1), dvec4(0, 0, -1, 0), 800, 800) {}
 
   Camera(double z_near, double z_far, double fov_deg, dvec4 init_pos, dvec4 init_look, unsigned screen_width, unsigned screen_height):
@@ -81,23 +76,20 @@ public:
   const dmat4x4 &getP() const { return P; }
 
   const dmat4x4 getV() const {
-    const dmat4x4 r = mat4_cast(conjugate(getLookQuat()));
+    const dmat4x4 r = mat4_cast(conjugate(pose.lookQuat()));
     const dmat4x4 t = glm::translate(dmat4x4(1.0), -dvec3(pose.pos));
     return r * t;
   }
 
-  void capture(const vert4Array &world_verts, const tArray &world_tris, const std::string &out_path);
+  void capture(const Mesh &world_mesh, const std::string &out_path);
 
-  void transform(dmat4x4 &trans);
-  void orbit(dvec3 &pos, double deg);
-  void translate(dvec3 &trans);
-  void rotate(dquat &q);
-  void rotateDegAxis(dvec3 &deg);
+  void transform(const dmat4x4 &trans) override { pose.apply(trans); }
+  dvec3 getPosition() const override { return dvec3(pose.pos); }
 
 private:
   // May vary
-  CameraPose pose;
-  
+  Pose pose;
+
   // Fixed at construction (think like camera's inherent parameters)
   const double Z_NEAR;
   const double Z_FAR;
@@ -117,18 +109,9 @@ private:
     };
   }
 
-  const dquat getLookQuat() const {
-    return quatLookAt(
-      normalize(
-        dvec3(pose.look)
-      ), 
-      dvec3(0,1,0)
-    );
-  }
-
   // space -> space
-  void worldToClip(const vert4Array &world_verts, vert4Array &out);
-  void clip(vert4Array &clip_space_verts, const tArray &tris, tArray &out_tris);
+  Mesh worldToClip(const Mesh &world_mesh);
+  void clip(Mesh &clip_mesh);
 
 };
 

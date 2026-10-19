@@ -4,7 +4,11 @@
 #include <string>
 #include <obj.h>
 
-void Obj::load(const std::string &path){
+Mesh::Mesh(const std::string &path){
+  load(path);
+}
+
+void Mesh::load(const std::string &path){
   std::ifstream f(path);
   if(!f) {
     std::cout << "ERROR LOADING OBJ " << path << std::endl;
@@ -13,7 +17,7 @@ void Obj::load(const std::string &path){
   load(f);
 }
 
-void Obj::load(std::istream &is){
+void Mesh::load(std::istream &is){
   verts.clear();
   tris.clear();
   name.clear();
@@ -44,16 +48,65 @@ void Obj::load(std::istream &is){
 }
 
 // Reads OBJ syntax from the stream, replacing the current contents
-std::istream& operator>>(std::istream& is, Obj& o){
+std::istream& operator>>(std::istream& is, Mesh& o){
   o.load(is);
   is.clear(is.rdstate() & ~std::ios::failbit); // getline hitting EOF sets failbit; the read itself succeeded
   return is;
 }
 
 // Writes the mesh back out in OBJ syntax (1-indexed faces)
-std::ostream& operator<<(std::ostream& os, const Obj& o){
+std::ostream& operator<<(std::ostream& os, const Mesh& o){
   if(!o.name.empty()) os << "o " << o.name << '\n';
   for(const dvec4 &v : o.verts) os << "v " << v.x << ' ' << v.y << ' ' << v.z << '\n';
   for(const Triangle &t : o.tris) os << "f " << t.x + 1 << ' ' << t.y + 1 << ' ' << t.z + 1 << '\n';
   return os;
+}
+
+dvec4 Mesh::getCentroid(){
+  dvec4 c(0);
+  for(auto &v : verts){
+    c += v;
+  }
+  c /= verts.size();
+  c.w = 1.0;
+
+  return c;
+}
+
+Mesh Mesh::operator+(const Mesh& b) const{
+  const vert4Array &av = this->verts;
+  const vert4Array &bv = b.verts;
+  const tArray &at = this->tris;
+  const tArray &bt = b.tris;
+
+  Mesh c;
+  vert4Array &cv = c.verts;
+  tArray &ct = c.tris;
+
+  cv.reserve(av.size() + bv.size());
+  ct.reserve(at.size() + bt.size());
+  
+  // concat verts
+  cv.insert(cv.end(), av.begin(), av.end());
+  cv.insert(cv.end(), bv.begin(), bv.end());
+
+  // concat tris
+  ct.insert(ct.end(), at.begin(), at.end());
+  unsigned int ofs = av.size(); // b's indices now sit after a's verts
+  for(const Triangle &t : bt){
+    ct.push_back(t + ofs);
+  }
+
+  return c;
+}
+
+Mesh Mesh::transformed(const dmat4x4 &m) const{
+  Mesh out(*this);
+  for(dvec4 &v : out.verts) v = m * v;
+  return out;
+}
+
+Mesh Obj::toWorld() const{
+  const dmat4x4 model = glm::translate(dmat4x4(1.0), dvec3(pose.pos)) * mat4_cast(pose.lookQuat());
+  return m.transformed(model);
 }
