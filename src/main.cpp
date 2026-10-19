@@ -1,9 +1,11 @@
-#include <cstdio>
 #include <iostream>
+#include <fstream>
+#include <string>
 
-#include "camera.h"
+#include <camera.h>
+#include <obj.h>
 
-int main(){
+void testmain1(){
   vert4Array verts = {
     // triangle 0: in front, centered
     {-1.0, -1.0, 0.0, 1.0},
@@ -44,10 +46,22 @@ int main(){
     800);
 
   for(int n = 0; n < 360; n++){
-    char path[32];
-    std::snprintf(path, sizeof(path), "out/test%d.ppm", n);
-    cam.capture(verts, tris, path);
+    cam.capture(verts, tris, "out/test" + std::to_string(n) + ".ppm");
     cam.orbit(com, 1.0);
   }
   std::cout << "wrote test0.ppm .. test359.ppm" << std::endl;
+}
+
+void testmain2(){
+  std::ifstream f("obj/test.obj");
+  Obj o;
+  f >> o;
+
+  std::ofstream of("obj/test_clone.obj");
+  of << o;
+}
+
+int main(){
+  //testmain1();
+  testmain2();
 }

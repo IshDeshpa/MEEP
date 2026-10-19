@@ -1,6 +1,6 @@
 CXX      := g++
 GLM_DIR  := glm
-OBJ_DIR  := obj
+OBJ_DIR  := build
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra -I$(GLM_DIR) -Irender
 TARGET   := main
 SRCS     := $(wildcard *.cpp render/*.cpp)

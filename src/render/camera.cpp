@@ -37,7 +37,7 @@ static void rasterize(const vert4Array &screen_space_verts, const tArray &screen
   }
 }
 
-void Camera::capture(const vert4Array &world_verts, const tArray &world_tris, const char *out_path){
+void Camera::capture(const vert4Array &world_verts, const tArray &world_tris, const std::string &out_path){
   screen.clear();
   vert4Array out_verts;
   worldToClip(world_verts, out_verts);

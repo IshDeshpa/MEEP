@@ -1,21 +1,18 @@
+#pragma once
+
 #include <cstdio>
 #include <cassert>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <vector>
 #include <stdint.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <obj.h>
 
 using namespace glm;
-
-// vertices
-using vert4Array = std::vector<dvec4>;
-
-// triangle stuff
-using Triangle = uvec3; // 3 indices into the vertices arrays
-using tArray = std::vector<Triangle>;
 
 class Screen {
 public:
@@ -41,8 +38,8 @@ public:
     std::fill(depthbuffer.begin(), depthbuffer.end(), 1.0);
   }
 
-  void writePPM(const char *path){
-    FILE *f = std::fopen(path, "wb");
+  void writePPM(const std::string &path){
+    FILE *f = std::fopen(path.c_str(), "wb");
     std::fprintf(f, "P6\n%d %d\n255\n", WIDTH, HEIGHT);
     for(int y=HEIGHT-1; y >= 0; y--){
       std::fwrite(&framebuffer[y*WIDTH], sizeof(Pixel), WIDTH, f);
@@ -89,7 +86,7 @@ public:
     return r * t;
   }
 
-  void capture(const vert4Array &world_verts, const tArray &world_tris, const char *out_path);
+  void capture(const vert4Array &world_verts, const tArray &world_tris, const std::string &out_path);
 
   void transform(dmat4x4 &trans);
   void orbit(dvec3 &pos, double deg);
