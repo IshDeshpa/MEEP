@@ -6,3 +6,4 @@ experiments/transition_variations/results/
 __pycache__/
 *.pyc
 AGENTS.md
+*/.cache

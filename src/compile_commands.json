@@ -1,0 +1,51 @@
+[
+  {
+    "file": "render/render.cu",
+    "arguments": [
+      "/opt/cuda/bin/nvcc",
+      "--std=c++20",
+      "-O3",
+      "-arch=native",
+      "-Xcompiler",
+      "-Wall,-Wextra",
+      "-Iglm",
+      "-I.",
+      "-MMD",
+      "-MP",
+      "-c",
+      "-o",
+      "build/render/render.o",
+      "render/render.cu"
+    ],
+    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
+    "output": "build/render/render.o"
+  },
+  {
+    "file": "/tmp/tmpxft_00008c9d_00000000-7_render.cudafe1.cpp",
+    "arguments": [
+      "/usr/bin/g++",
+      "-std=c++20",
+      "-D__CUDA_ARCH__=750",
+      "-D__CUDA_ARCH_LIST__=750",
+      "-c",
+      "-x",
+      "c++",
+      "-DCUDA_DOUBLE_MATH_FUNCTIONS",
+      "-Wall",
+      "-Wextra",
+      "-O3",
+      "-Wno-psabi",
+      "-Iglm",
+      "-I.",
+      "-I/opt/cuda/bin/../targets/x86_64-linux/include",
+      "-isystem",
+      "/opt/cuda/bin/../targets/x86_64-linux/include/cccl",
+      "-m64",
+      "/tmp/tmpxft_00008c9d_00000000-7_render.cudafe1.cpp",
+      "-o",
+      "build/render/render.o"
+    ],
+    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
+    "output": "build/render/render.o"
+  }
+]
