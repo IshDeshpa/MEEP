@@ -1,11 +1,20 @@
 CXX      := g++
 GLM_DIR  := glm
 OBJ_DIR  := build
-CXXFLAGS := --std=c++20 -O3 -Wall -Wextra -I$(GLM_DIR) -Irender
+# subfolders whose sources are compiled in and whose headers are on the include path
+MODULES  := render state
+MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
+CXXFLAGS := --std=c++20 -O3 -Wall -Wextra -I$(GLM_DIR) $(MODULES:%=-I%)
 TARGET   := main
-SRCS     := $(wildcard *.cpp render/*.cpp)
+TEST_DIR := tests
+SRCS     := $(wildcard *.cpp $(MODULES:%=%/*.cpp))
 OBJS     := $(SRCS:%.cpp=$(OBJ_DIR)/%.o)
-DEPS     := $(OBJS:.o=.d)
+# everything except main.cpp, shared by tests
+LIB_OBJS := $(filter-out $(OBJ_DIR)/main.o,$(OBJS))
+TEST_SRCS  := $(wildcard $(TEST_DIR)/*.cpp)
+TEST_NAMES := $(basename $(notdir $(TEST_SRCS)))
+TEST_OBJS  := $(TEST_SRCS:%.cpp=$(OBJ_DIR)/%.o)
+DEPS     := $(OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
 all: $(TARGET)
 
@@ -17,21 +26,34 @@ $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
+# `make <test-name>` builds tests/<test-name>.cpp into build/tests/<test-name>
+# (linked against all non-main sources); `make run-<test-name>` also runs it.
+$(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+$(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
+
+$(TEST_NAMES:%=run-%): run-%: %
+	./$(OBJ_DIR)/$(TEST_DIR)/$*
+
 run: $(TARGET)
 	./$(TARGET)
 
 # rename parameters/locals to match .clang-tidy
 # one clang-tidy job per source file, so `make -jN format` runs N of them at once
-FORMAT_TARGETS := $(SRCS:%=format/%)
+HDRS := $(patsubst ./%,%,$(wildcard $(foreach d,. $(MODULES) $(TEST_DIR),$(foreach e,h hpp,$(d)/*.$(e)))))
+FORMAT_TARGETS := $(SRCS:%=format/%) $(TEST_SRCS:%=format/%) $(HDRS:%=format/%)
 
 format: $(FORMAT_TARGETS)
 
 $(FORMAT_TARGETS): format/%:
-	clang-tidy --fix --fix-errors $* -- $(CXXFLAGS)
+	clang-tidy --fix --fix-errors $* -- -x c++ $(CXXFLAGS)
 
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
 
 -include $(DEPS)
 
-.PHONY: all run format $(FORMAT_TARGETS) clean
+.SECONDARY:
+
+.PHONY: all run $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) clean
