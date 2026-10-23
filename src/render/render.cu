@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <stddef.h>
 
 __global__ void helloWorldKernel(){
   printf("Hello World!\n");

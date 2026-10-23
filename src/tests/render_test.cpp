@@ -9,12 +9,7 @@
 // 8. Profit
 // 9. Spend profits on frivolous ventures
 
-#include "state/state.hpp"
-#include "config.hpp"
 #include "render/render.hpp"
-
-WorldStateBuf2<WORLD_SIZE_N, WORLD_SIZE_M, WORLD_SIZE_K> world;
-FaceETileLUT et_lut;
 
 int main(){
   helloWorld();
