@@ -1,3 +1,3 @@
 CompileFlags:
-  Add: [--cuda-gpu-arch=sm_75, --cuda-path=/opt/cuda]
+  Add: [-std=c++20, -I., -Iglm, --cuda-gpu-arch=sm_75, --cuda-path=/tmp/meep-cuda-12.6]
   Remove: [-arch=*, -Xcompiler, -Wall,-Wextra, -MMD, -MP]

@@ -59,9 +59,9 @@ int main(int argc, char* argv[]){
     WorldState world(n, m, k);
 
     // start world running function
-    //    needs to take tick rate, which can be changed by user, into account. 
+    //    needs to take tick rate, which can be changed by user during runtime, into account. 
     //    needs to maybe sync with rendering? 
-    //    needs to be able to take in input from user modifying world    
+    //    needs to be able to take in input from user modifying world (maybe not because state mem is unifed, maybe some flag to keep sync?)
     // function to contain world ticking loop, which calls the individual tick cuda kernel, which is global,
     //    which calls all the tile update functions for all tiles computed in that tick, which is host/device? 
     //    which cells are in which tile depends on phase, which is tick_counter & b'0010 (phase changes every 2 ticks)

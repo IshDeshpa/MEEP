@@ -1,51 +1,63 @@
 [
   {
-    "file": "render/render.cu",
+    "directory": "/home/rmor/Multithreaded/MEEP/src",
+    "file": "/home/rmor/Multithreaded/MEEP/src/main.cpp",
     "arguments": [
-      "/opt/cuda/bin/nvcc",
+      "g++",
       "--std=c++20",
       "-O3",
-      "-arch=native",
-      "-Xcompiler",
-      "-Wall,-Wextra",
+      "-Wall",
+      "-Wextra",
       "-Iglm",
       "-I.",
       "-MMD",
       "-MP",
       "-c",
       "-o",
-      "build/render/render.o",
-      "render/render.cu"
-    ],
-    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
-    "output": "build/render/render.o"
+      "build/main.o",
+      "main.cpp"
+    ]
   },
   {
-    "file": "/tmp/tmpxft_00008c9d_00000000-7_render.cudafe1.cpp",
+    "directory": "/home/rmor/Multithreaded/MEEP/src",
+    "file": "/home/rmor/Multithreaded/MEEP/src/render/render.cu",
     "arguments": [
-      "/usr/bin/g++",
-      "-std=c++20",
-      "-D__CUDA_ARCH__=750",
-      "-D__CUDA_ARCH_LIST__=750",
-      "-c",
-      "-x",
-      "c++",
-      "-DCUDA_DOUBLE_MATH_FUNCTIONS",
-      "-Wall",
-      "-Wextra",
+      "/tmp/meep-cuda-12.6/bin/nvcc",
+      "--std=c++20",
       "-O3",
-      "-Wno-psabi",
+      "-arch=compute_75",
+      "-Xcompiler",
+      "-Wall,-Wextra",
       "-Iglm",
       "-I.",
-      "-I/opt/cuda/bin/../targets/x86_64-linux/include",
-      "-isystem",
-      "/opt/cuda/bin/../targets/x86_64-linux/include/cccl",
-      "-m64",
-      "/tmp/tmpxft_00008c9d_00000000-7_render.cudafe1.cpp",
+      "-I/tmp/meep-cuda-12.6/include",
+      "-MMD",
+      "-MP",
+      "-c",
       "-o",
-      "build/render/render.o"
-    ],
-    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
-    "output": "build/render/render.o"
+      "build/render/render.o",
+      "render/render.cu"
+    ]
+  },
+  {
+    "directory": "/home/rmor/Multithreaded/MEEP/src",
+    "file": "/home/rmor/Multithreaded/MEEP/src/state/state.cu",
+    "arguments": [
+      "/tmp/meep-cuda-12.6/bin/nvcc",
+      "--std=c++20",
+      "-O3",
+      "-arch=compute_75",
+      "-Xcompiler",
+      "-Wall,-Wextra",
+      "-Iglm",
+      "-I.",
+      "-I/tmp/meep-cuda-12.6/include",
+      "-MMD",
+      "-MP",
+      "-c",
+      "-o",
+      "build/state/state.o",
+      "state/state.cu"
+    ]
   }
 ]
