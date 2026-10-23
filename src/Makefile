@@ -13,9 +13,23 @@ TARGET   := main
 # its libcuda replacement ahead of the system one on LD_LIBRARY_PATH.
 BACKEND   ?= cuda
 ZLUDA_DIR ?= /mnt/Work/zluda
-NVCC      := nvcc
+
+# CUDA install root, detected in order: the nvcc already on PATH (symlinks
+# resolved), then the usual locations. Override with `make CUDA_HOME=/path`.
+CUDA_NVCC_PATH := $(shell readlink -f "$$(command -v nvcc)" 2>/dev/null)
+CUDA_HOME ?= $(or $(if $(CUDA_NVCC_PATH),$(patsubst %/bin/nvcc,%,$(CUDA_NVCC_PATH))),\
+  $(patsubst %/bin/nvcc,%,$(firstword $(wildcard /usr/local/cuda/bin/nvcc /opt/cuda/bin/nvcc \
+  $(sort /usr/local/cuda-*/bin/nvcc)))))
+# Call nvcc by full path so it finds its helpers (cudafe++, ptxas) even when
+# its bin/ is not on PATH; falls back to plain `nvcc` if nothing was found.
+NVCC      := $(if $(CUDA_HOME),$(CUDA_HOME)/bin/nvcc,nvcc)
 CUDA_ARCH ?= compute_75
-NVCCFLAGS := --std=c++20 -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra -I$(GLM_DIR) -I.
+# CUDA headers (cuda_runtime.h): override with `make CUDA_INC=/path/to/include`.
+# Defaults to the first existing include dir under CUDA_HOME.
+CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
+  $(CUDA_HOME)/include/cuda_runtime.h $(CUDA_HOME)/targets/x86_64-linux/include/cuda_runtime.h)))
+NVCCFLAGS := --std=c++20 -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+
 ifeq ($(BACKEND),zluda)
 RUN_ENV := env LD_LIBRARY_PATH=$(ZLUDA_DIR)$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
 else ifeq ($(BACKEND),cuda)
@@ -23,6 +37,7 @@ RUN_ENV :=
 else
 $(error BACKEND must be 'cuda' or 'zluda', got '$(BACKEND)')
 endif
+
 TEST_DIR := tests
 
 # let make locate sources/headers by bare name in any module
@@ -79,6 +94,27 @@ format: $(FORMAT_TARGETS)
 $(FORMAT_TARGETS): format/%:
 	clang-tidy --fix --fix-errors $* -- -x c++ $(CXXFLAGS)
 
+help:
+	@echo "Targets:"
+	@echo "  all                 build $(TARGET) (default)"
+	@echo "  run                 build and run $(TARGET)"
+	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
+	@echo "  run-<test-name>     build and run that test"
+	@echo "  format              run clang-tidy --fix on all sources and headers"
+	@echo "  clean               remove $(OBJ_DIR)/ and $(TARGET)"
+	@echo "  help                show this message"
+	@echo
+	@echo "Tests found: $(if $(TEST_NAMES),$(TEST_NAMES),(none in $(TEST_DIR)/))"
+	@echo "Modules:     $(MODULES)"
+	@echo
+	@echo "Variables (override as make VAR=value):"
+	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
+	@echo "  ZLUDA_DIR=$(ZLUDA_DIR)"
+	@echo "  CUDA_HOME=$(CUDA_HOME)"
+	@echo "  CUDA_INC=$(CUDA_INC)"
+	@echo "  CUDA_ARCH=$(CUDA_ARCH)"
+	@echo "  NVCC=$(NVCC)"
+
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET)
 
@@ -86,4 +122,4 @@ clean:
 
 .SECONDARY:
 
-.PHONY: all run $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) clean
+.PHONY: all run $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean
