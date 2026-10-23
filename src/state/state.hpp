@@ -8,13 +8,13 @@
 
 
 enum class Element : std::uint8_t {
-  Block = 0,
-  Emitter,
-  Void,
-  Air,
-  Water, 
-  Earth, 
-  Fire  
+  BLOCK = 0,
+  EMITTER = 1,
+  VOID,
+  AIR,
+  WATER, 
+  EARTH, 
+  FIRE  
 };
 
 // A cell contains all the information that needs to be in world state about
@@ -42,8 +42,6 @@ struct WorldState {
 };
 
 
-
-
 // TODO: not positive about this; C standard doesn't have any guarantees
 // about ordering of fields in a bitfield struct. Perhaps switch to a simple
 // uint16_t with constexpr (compile-time) functions to access the fields?
@@ -53,25 +51,12 @@ struct WorldState {
 * e00 e01
 * e10 e11
 */
-struct ETile{
-  union{
-    struct {
-      // nibbles
-      uint8_t e00 : 4;
-      uint8_t e01 : 4;
-      uint8_t e10 : 4;
-      uint8_t e11 : 4;
-    };
-    struct {
-      // bytes
-      // TODO: probably check endianness; is this really where we think it is? is it rows or columns?
-      uint8_t e0x : 8;
-      uint8_t e1x : 8;
-    };
-    // word
-    uint16_t e;
-  };
-};
+using ETile = uint16_t; // 3-15:12, 2-11:8, 1-7:4, 0-3:0
+
+constexpr ETile cell0 = 0x000F;
+constexpr ETile cell1 = 0x00F0;
+constexpr ETile cell2 = 0x0F00;
+constexpr ETile cell3 = 0xF000;
 
 // Our "FSM", really a lookup from input ETile -> output ETile
 using ETileLUT=ETile[UINT16_MAX+1];

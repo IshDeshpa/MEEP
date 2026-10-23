@@ -58,7 +58,7 @@ template <int Variant, bool Sequential, typename Entry>
 __global__ void lookup_fsm(const Entry* table, unsigned iterations, std::uint32_t* output)
 {
     const unsigned thread = blockIdx.x * blockDim.x + threadIdx.x;
-    const volatile Entry* lookup = table; // Force actual LUT loads in this synthetic test.
+    const Entry* lookup = table; // Force actual LUT loads in this synthetic test.
     std::uint32_t accumulated = 0;
     for (unsigned i = 0; i < iterations; ++i) {
         std::uint32_t state = input_cube(thread, i);
