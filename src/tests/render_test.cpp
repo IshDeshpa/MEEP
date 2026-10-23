@@ -7,6 +7,7 @@
 // 6. NDC -> Screen
 // 7. Rasterize screen (assigning colors to pixels appropriately)
 // 8. Profit
+// 9. Spend profits on frivolous ventures
 
 #include "state/state.hpp"
 #include "config.hpp"

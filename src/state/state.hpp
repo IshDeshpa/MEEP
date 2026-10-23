@@ -1,16 +1,11 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <stdint.h>
 
 // TODO: we could wrap some of these with classes that have APIs to operate on the data,
 // these are just the core, minimal reprs. of data to send to the GPU
 
-// A cell contains all the information that needs to be in world state about
-// a single cell
-struct Cell{
-  uint8_t elem: 4;
-  uint8_t state: 4; // expand out to separate fields later based on what we want
-};
 
 enum class Element : std::uint8_t {
   Block = 0,
@@ -22,18 +17,32 @@ enum class Element : std::uint8_t {
   Fire  
 };
 
-// A single world state buffer`
-// TODO: like mentioned, above, maybe needs a wrapper class? imagine CPU wants to get a set of adjacent cells (like in a 
-// margolus neighborhood), would be nice to have convenient constexpr functions for that
-template<int N=0, int M=0, int K=0>
-using WorldStateBuf=Cell[N][M][K];
-
-// Two world state buffers, one for current and one for next
-template<int N=0, int M=0, int K=0>
-struct WorldStateBuf2{
-  WorldStateBuf<N,M,K> curr;
-  WorldStateBuf<N,M,K> next;
+// A cell contains all the information that needs to be in world state about
+// a single cell
+struct Cell{
+  Element elem: 4;
+  uint8_t state: 4; // expand out to separate fields later based on what we want
 };
+
+
+using dim_t = std::size_t;
+struct WorldState {
+  std::size_t n, m, k;
+  Cell* curr;
+  Cell* next;
+
+  WorldState(dim_t n, dim_t m, dim_t k);
+  ~WorldState();
+  WorldState(const WorldState&) = delete;
+  WorldState& operator=(const WorldState&) = delete;
+  dim_t index(dim_t x, dim_t y, dim_t z) const;
+
+  //TODO: margolus neighborhood fetch & modify functions. Neighborhoods are either 2x2x2 starting at even (0,0,0) or at odd (1,1,1) coords.
+  //      Need these for both CPU & GPU, these will probably be different
+};
+
+
+
 
 // TODO: not positive about this; C standard doesn't have any guarantees
 // about ordering of fields in a bitfield struct. Perhaps switch to a simple
