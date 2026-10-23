@@ -12,13 +12,17 @@ struct Cell{
   uint8_t state: 4; // expand out to separate fields later based on what we want
 };
 
-enum Elem{
-  // WATER = 0,
-  // FIRE = 1,
-  // etc.
+enum class Element : std::uint8_t {
+  Block = 0,
+  Emitter,
+  Void,
+  Air,
+  Water, 
+  Earth, 
+  Fire  
 };
 
-// A single world state buffer
+// A single world state buffer`
 // TODO: like mentioned, above, maybe needs a wrapper class? imagine CPU wants to get a set of adjacent cells (like in a 
 // margolus neighborhood), would be nice to have convenient constexpr functions for that
 template<int N=0, int M=0, int K=0>
@@ -66,3 +70,4 @@ using ETileLUT=ETile[UINT16_MAX+1];
 // Sizing assertions, change later if necessary
 static_assert(sizeof(Cell) == 1);
 static_assert(sizeof(ETile) == sizeof(uint16_t));
+
