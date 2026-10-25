@@ -7,14 +7,16 @@
 // these are just the core, minimal reprs. of data to send to the GPU
 
 
+// TODO: change debug elements to be highest number elements in order to use shifting to quickly differentiate 
 enum class Element : std::uint8_t {
-  BLOCK = 0,
-  EMITTER = 1,
-  VOID,
-  AIR,
-  WATER, 
-  EARTH, 
-  FIRE  
+  AIR = 0,
+  WATER = 1,
+  EARTH = 2,
+  LAVA = 3,
+  // debug
+  BLOCK = 4,
+  EMITTER = 5,
+  VOID = 6
 };
 
 // A cell contains all the information that needs to be in world state about
@@ -51,12 +53,16 @@ struct WorldState {
 * e00 e01
 * e10 e11
 */
-using ETile = uint16_t; // 3-15:12, 2-11:8, 1-7:4, 0-3:0
+using ETile = uint16_t; // 0-15:12, 1-11:8, 2-7:4, 3-3:0
 
-constexpr ETile cell0 = 0x000F;
-constexpr ETile cell1 = 0x00F0;
-constexpr ETile cell2 = 0x0F00;
-constexpr ETile cell3 = 0xF000;
+/* 0x0123 = 
+* air   water
+* earth lava
+*/
+constexpr ETile cell0 = 0xF000;
+constexpr ETile cell1 = 0x0F00;
+constexpr ETile cell2 = 0x00F0;
+constexpr ETile cell3 = 0x000F;
 
 // Our "FSM", really a lookup from input ETile -> output ETile
 using ETileLUT=ETile[UINT16_MAX+1];
