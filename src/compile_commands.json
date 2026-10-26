@@ -1,7 +1,7 @@
 [
   {
-    "directory": "/home/rmor/Multithreaded/MEEP/src",
-    "file": "/home/rmor/Multithreaded/MEEP/src/main.cpp",
+    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
+    "file": "/mnt/Work/MT_GPU/final_proj/MEEP/src/main.cpp",
     "arguments": [
       "g++",
       "--std=c++20",
@@ -19,10 +19,10 @@
     ]
   },
   {
-    "directory": "/home/rmor/Multithreaded/MEEP/src",
-    "file": "/home/rmor/Multithreaded/MEEP/src/render/render.cu",
+    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
+    "file": "/mnt/Work/MT_GPU/final_proj/MEEP/src/render/render.cu",
     "arguments": [
-      "/tmp/meep-cuda-12.6/bin/nvcc",
+      "/mnt/Work/cuda-12.9/bin/nvcc",
       "--std=c++20",
       "-O3",
       "-arch=compute_75",
@@ -30,7 +30,7 @@
       "-Wall,-Wextra",
       "-Iglm",
       "-I.",
-      "-I/tmp/meep-cuda-12.6/include",
+      "-I/mnt/Work/cuda-12.9/include",
       "-MMD",
       "-MP",
       "-c",
@@ -40,10 +40,10 @@
     ]
   },
   {
-    "directory": "/home/rmor/Multithreaded/MEEP/src",
-    "file": "/home/rmor/Multithreaded/MEEP/src/state/state.cu",
+    "directory": "/mnt/Work/MT_GPU/final_proj/MEEP/src",
+    "file": "/mnt/Work/MT_GPU/final_proj/MEEP/src/state/state.cu",
     "arguments": [
-      "/tmp/meep-cuda-12.6/bin/nvcc",
+      "/mnt/Work/cuda-12.9/bin/nvcc",
       "--std=c++20",
       "-O3",
       "-arch=compute_75",
@@ -51,7 +51,7 @@
       "-Wall,-Wextra",
       "-Iglm",
       "-I.",
-      "-I/tmp/meep-cuda-12.6/include",
+      "-I/mnt/Work/cuda-12.9/include",
       "-MMD",
       "-MP",
       "-c",

@@ -3,16 +3,21 @@ GLM_DIR  := glm
 OBJ_DIR  := build
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state
+MODULES  := render state 
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra -I$(GLM_DIR) -I.
 TARGET   := main
 
 # GPU backend: `make BACKEND=cuda` (default, native CUDA) or `make BACKEND=zluda`.
-# Both compile with nvcc; ZLUDA only changes how binaries are run, by putting
-# its libcuda replacement ahead of the system one on LD_LIBRARY_PATH.
+# ZLUDA defaults to the manual CUDA 12.9 install with GCC 14, and puts its
+# libcuda replacement ahead of the system one on LD_LIBRARY_PATH at runtime.
 BACKEND   ?= cuda
 ZLUDA_DIR ?= /mnt/Work/zluda
+
+ifeq ($(BACKEND),zluda)
+CUDA_HOME ?= /mnt/Work/cuda-12.9
+CUDA_HOST_CXX ?= /usr/bin/g++-14
+endif
 
 # CUDA install root, detected in order: the nvcc already on PATH (symlinks
 # resolved), then the usual locations. Override with `make CUDA_HOME=/path`.
@@ -22,8 +27,8 @@ CUDA_HOME ?= $(or $(if $(CUDA_NVCC_PATH),$(patsubst %/bin/nvcc,%,$(CUDA_NVCC_PAT
   $(sort /usr/local/cuda-*/bin/nvcc)))))
 # Call nvcc by full path so it finds its helpers (cudafe++, ptxas) even when
 # its bin/ is not on PATH; falls back to plain `nvcc` if nothing was found.
-NVCC      := $(if $(CUDA_HOME),$(CUDA_HOME)/bin/nvcc,nvcc)
-CUDA_ARCH ?= compute_75
+NVCC      := $(if $(CUDA_HOME),$(CUDA_HOME)/bin/nvcc,nvcc)$(if $(CUDA_HOST_CXX), -ccbin $(CUDA_HOST_CXX))
+CUDA_ARCH ?= sm_75
 # CUDA headers (cuda_runtime.h): override with `make CUDA_INC=/path/to/include`.
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
@@ -111,6 +116,7 @@ help:
 	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
 	@echo "  ZLUDA_DIR=$(ZLUDA_DIR)"
 	@echo "  CUDA_HOME=$(CUDA_HOME)"
+	@echo "  CUDA_HOST_CXX=$(CUDA_HOST_CXX) (empty uses nvcc's default host compiler)"
 	@echo "  CUDA_INC=$(CUDA_INC)"
 	@echo "  CUDA_ARCH=$(CUDA_ARCH)"
 	@echo "  NVCC=$(NVCC)"
