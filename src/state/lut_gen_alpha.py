@@ -91,7 +91,7 @@ def evalTile(tile):
     for i in range(4):
         if used[i]:
             continue
-        
+
         for j in neighbours[i]:
             if used[j]:
                 continue
@@ -128,7 +128,7 @@ def generateLUT():
 def writeLUT(outputs, filename):
     with open(filename, "wb") as file:
         for output in outputs:
-            file.write(output.to_bytes(2, byteorder="big")) # x86 little endian
+            file.write(output.to_bytes(2, byteorder="little")) # x86 little endian
 
 def readLUT(filename):
     with open(filename, "rb") as file:
@@ -138,7 +138,7 @@ def readLUT(filename):
         raise ValueError("Expected a 131072-byte LUT file")
 
     return [
-        int.from_bytes(data[i:i + 2], byteorder="big")
+        int.from_bytes(data[i:i + 2], byteorder="little")
         for i in range(0, len(data), 2)
     ]
 
