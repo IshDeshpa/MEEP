@@ -8,3 +8,5 @@ __pycache__/
 AGENTS.md
 */.cache
 .vscode/*
+# Local compilation databases
+compile_commands.json

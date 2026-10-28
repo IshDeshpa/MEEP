@@ -7,9 +7,7 @@
 
 using namespace glm;
 
-using Vertex=dvec4; // might change later if normals/other are added. heterogeneous coords
-
-using TriVerts=Vertex[3]; // vertices
+using Vertex=dvec3; // might change later if normals/other are added. heterogeneous coords
 using TriInds=uvec3; // indices pointing to vertices
 
 struct Color {
@@ -53,12 +51,21 @@ struct Geometry{
   std::vector<Vertex> verts;
   std::vector<TriInds> tris;
 
-  void pushBack(TriVerts t){
-    tris.push_back({verts.size(), verts.size()+1, verts.size()+2});
+  unsigned int addVertex(Vertex v){
+    const unsigned int index = static_cast<unsigned int>(verts.size());
+    verts.push_back(v);
+    return index;
+  }
 
-    verts.push_back(t[0]);
-    verts.push_back(t[1]);
-    verts.push_back(t[2]);
+  void addTriangle(TriInds indices){
+    tris.push_back(indices);
+  }
+
+  void addTriangle(Vertex a, Vertex b, Vertex c){
+    const unsigned int ia = addVertex(a);
+    const unsigned int ib = addVertex(b);
+    const unsigned int ic = addVertex(c);
+    addTriangle({ia, ib, ic});
   }
 
   // To combine two geometries
@@ -82,8 +89,8 @@ struct Geometry{
     return *this;
   }
 
-  void load(std::string &path);
-  void save(std::string &path);
+  void load(const std::string &path);
+  void save(const std::string &path);
 };
 
 // A collection of triangles in a geometry
