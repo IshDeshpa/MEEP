@@ -1,3 +1,4 @@
 CompileFlags:
   Add: [-std=c++20, -I., -Iglm, --cuda-gpu-arch=sm_75, --cuda-path=/mnt/Work/cuda-12.9]
-  Remove: [-arch=*, -Xcompiler, -Wall,-Wextra, -MMD, -MP]
+  # Remove NVCC flags and the separate host-compiler argument for clangd.
+  Remove: [-arch=*, -ccbin, -ccbin=*, --compiler-bindir, --compiler-bindir=*, /usr/bin/g++-14, --expt-relaxed-constexpr, -Xcompiler, "-Wall,-Wextra", -MMD, -MP]
