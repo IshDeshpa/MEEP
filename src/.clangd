@@ -1,4 +1,17 @@
 CompileFlags:
-  Add: [-std=c++20, -I., -Iglm, --cuda-gpu-arch=sm_75, --cuda-path=/mnt/Work/cuda-12.9]
+  Add: [-std=c++20, -I., -Iglm]
   # Remove NVCC flags and the separate host-compiler argument for clangd.
   Remove: [-arch=*, -ccbin, -ccbin=*, --compiler-bindir, --compiler-bindir=*, /usr/bin/g++-14, --expt-relaxed-constexpr, -Xcompiler, "-Wall,-Wextra", -MMD, -MP]
+---
+If:
+  PathExclude: .*\.cu
+CompileFlags:
+  # GCC 16 is installed as g++ on this machine.
+  Compiler: /usr/bin/g++
+  Add: [--gcc-install-dir=/usr/lib/gcc/x86_64-pc-linux-gnu/16]
+---
+If:
+  PathMatch: .*\.cu
+CompileFlags:
+  Compiler: /usr/bin/g++-14
+  Add: [-x, cuda, --gcc-install-dir=/usr/lib/gcc/x86_64-pc-linux-gnu/14.3.1, --cuda-gpu-arch=sm_75, --cuda-path=/mnt/Work/cuda-12.9]
