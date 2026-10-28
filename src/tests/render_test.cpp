@@ -13,18 +13,19 @@
 // 8. Profit
 // 9. Spend profits on frivolous ventures
 
+#include "state/state.hpp"
 #include "render/render.hpp"
 
 int main(){
   helloWorld();
 
-  WorldState *w = new WorldState(100, 100, 100);
-  
-  // Initialize a few cells
-  (*w)(0, 0, 0) = {Element::WATER, 0};
-  (*w)(1, 0, 0) = {Element::EARTH, 0};
-  (*w)(2, 0, 0) = {Element::FIRE, 0};
-  (*w)(3, 0, 0) = {Element::AIR, 0};
+  // WorldState *w = new WorldState(100, 100, 100);
+  //
+  // // Initialize a few cells
+  // (*w)(0, 0, 0) = {Element::WATER, 0};
+  // (*w)(1, 0, 0) = {Element::EARTH, 0};
+  // (*w)(2, 0, 0) = {Element::LAVA, 0};
+  // (*w)(3, 0, 0) = {Element::AIR, 0};
 
   
 

@@ -5,7 +5,10 @@ OBJ_DIR  := build
 # (e.g. #include "render/camera.h")
 MODULES  := render state 
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
-CXXFLAGS := --std=c++20 -O3 -Wall -Wextra -I$(GLM_DIR) -I.
+
+DEFINES  := -DGLM_ENABLE_EXPERIMENTAL
+
+CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 TARGET   := main
 
 # GPU backend: `make BACKEND=cuda` (default, native CUDA) or `make BACKEND=zluda`.
@@ -28,12 +31,12 @@ CUDA_HOME ?= $(or $(if $(CUDA_NVCC_PATH),$(patsubst %/bin/nvcc,%,$(CUDA_NVCC_PAT
 # Call nvcc by full path so it finds its helpers (cudafe++, ptxas) even when
 # its bin/ is not on PATH; falls back to plain `nvcc` if nothing was found.
 NVCC      := $(if $(CUDA_HOME),$(CUDA_HOME)/bin/nvcc,nvcc)$(if $(CUDA_HOST_CXX), -ccbin $(CUDA_HOST_CXX))
-CUDA_ARCH ?= sm_75
+CUDA_ARCH ?= sm_80
 # CUDA headers (cuda_runtime.h): override with `make CUDA_INC=/path/to/include`.
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
   $(CUDA_HOME)/include/cuda_runtime.h $(CUDA_HOME)/targets/x86_64-linux/include/cuda_runtime.h)))
-NVCCFLAGS := --std=c++20 -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
 
 ifeq ($(BACKEND),zluda)
 RUN_ENV := env LD_LIBRARY_PATH=$(ZLUDA_DIR)$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
@@ -52,7 +55,8 @@ vpath %.h   $(MODULES)
 vpath %.hpp $(MODULES)
 SRCS     := $(wildcard *.cpp $(MODULES:%=%/*.cpp))
 CU_SRCS  := $(wildcard *.cu $(MODULES:%=%/*.cu))
-OBJS     := $(SRCS:%.cpp=$(OBJ_DIR)/%.o) $(CU_SRCS:%.cu=$(OBJ_DIR)/%.o)
+# Keep CUDA objects distinct when a .cpp and .cu share the same basename.
+OBJS     := $(SRCS:%.cpp=$(OBJ_DIR)/%.o) $(CU_SRCS:%.cu=$(OBJ_DIR)/%.cu.o)
 # nvcc drives the link when any CUDA sources are present (pulls in cudart)
 LINK     := $(if $(CU_SRCS),$(NVCC) $(NVCCFLAGS),$(CXX) $(CXXFLAGS))
 # everything except main.cpp, shared by tests
@@ -72,7 +76,7 @@ $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
-$(OBJ_DIR)/%.o: %.cu
+$(OBJ_DIR)/%.cu.o: %.cu
 	@mkdir -p $(dir $@)
 	$(NVCC) $(NVCCFLAGS) -MMD -MP -c -o $@ $<
 

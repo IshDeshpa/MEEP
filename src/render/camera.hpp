@@ -1,9 +1,8 @@
 #pragma once
 
-#define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
-#include "render/render.hpp"
+#include "render/primitives.hpp"
 
 class Screen {
 public:
