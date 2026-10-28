@@ -12,6 +12,7 @@ representation, material rules, and rendering are still being explored.
 | Location | Purpose |
 | --- | --- |
 | [Project guidance](AGENTS.md) | Current conventions and navigation for contributors and coding agents |
+| [Architecture working model](docs/architecture.md) | Alpha scope, CPU/GPU ownership, alternatives, and open questions |
 | [CUDA thread-count experiment](experiments/thread_count/README.md) | Compare small grids, occupancy-sized worker grids, and one thread per neighborhood |
 | [Transition variations](experiments/transition_variations/README.md) | Compare cube, face, and edge LUT updates with one thread per tile and double buffering |
 | [CPU update proof of concept](experiments/sim_update_poc/README.md) | Serial updates, per-cell threads, and persistent worker pools |
