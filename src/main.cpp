@@ -4,8 +4,9 @@
 #include <exception>
 #include <iostream>
 #include <string_view>
+#include <chrono>
 
-ETileLUT et_lut;
+FaceETileLUT et_lut; // Tiles should be declared as __constant__ 
 std::size_t tick_counter = 0;
 
 // TODO: variable tick rate
@@ -13,6 +14,16 @@ enum TickRate : std::uint16_t{
 //   Unlimited = 0,
 
 };
+
+void world_tick(WorldState& world) {
+  while (true) {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    //call the CPU state_tick() function that dispatches the GPU tick function that dispatches all tiles
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now(); 
+    //wait depending on time taken and tick rate
+  }
+}
+
 
 
 int main(int argc, char* argv[]){
