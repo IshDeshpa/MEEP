@@ -27,7 +27,7 @@ void world_tick(WorldState& world) {
 
 
 int main(int argc, char* argv[]){
-  dim_t n = 100, m = 100, k = 100;
+  dim n = 100, m = 100, k = 100;
 
   for (int i = 1; i < argc; ++i) {
     std::string_view option = argv[i];
@@ -39,7 +39,7 @@ int main(int argc, char* argv[]){
       return 0;
     }
 
-    dim_t* dimension = nullptr;
+    dim* dimension = nullptr;
     if (option == "-n" || option == "-x") {
       dimension = &n;
     } else if (option == "-m" || option == "-y") {
@@ -56,7 +56,7 @@ int main(int argc, char* argv[]){
       return 1;
     }
     const std::string_view value = argv[i];
-    dim_t parsed = 0;
+    dim parsed = 0;
     const auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
     if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || parsed == 0) {
       std::cerr << "Invalid dimension for " << option << ": " << value
