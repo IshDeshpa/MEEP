@@ -38,7 +38,8 @@ CUDA_ARCH ?= sm_75
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
   $(CUDA_HOME)/include/cuda_runtime.h $(CUDA_HOME)/targets/x86_64-linux/include/cuda_runtime.h)))
-NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+# Device linking supports out-of-line helpers; LTO enables cross-file inlining.
+NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
 
 ifeq ($(BACKEND),zluda)
 RUN_ENV := env LD_LIBRARY_PATH=$(ZLUDA_DIR):$(ROCM_LIB_DIR)$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
@@ -56,7 +57,7 @@ vpath %.cu  $(MODULES) $(TEST_DIR)
 vpath %.h   $(MODULES)
 vpath %.hpp $(MODULES)
 SRCS     := $(wildcard *.cpp $(MODULES:%=%/*.cpp))
-CU_SRCS  := $(wildcard *.cu $(MODULES:%=%/*.cu) tests/*.cu)
+CU_SRCS  := $(wildcard *.cu $(MODULES:%=%/*.cu))
 # Keep CUDA objects distinct when a .cpp and .cu share the same basename.
 OBJS     := $(SRCS:%.cpp=$(OBJ_DIR)/%.o) $(CU_SRCS:%.cu=$(OBJ_DIR)/%.cu.o)
 # nvcc drives the link when any CUDA sources are present (pulls in cudart)
@@ -64,8 +65,9 @@ LINK     := $(if $(CU_SRCS),$(NVCC) $(NVCCFLAGS),$(CXX) $(CXXFLAGS))
 # everything except main.cpp, shared by tests
 LIB_OBJS := $(filter-out $(OBJ_DIR)/main.o,$(OBJS))
 TEST_SRCS  := $(wildcard $(TEST_DIR)/*.cpp)
-TEST_NAMES := $(basename $(notdir $(TEST_SRCS)))
-TEST_OBJS  := $(TEST_SRCS:%.cpp=$(OBJ_DIR)/%.o)
+TEST_CU_SRCS := $(wildcard $(TEST_DIR)/*.cu)
+TEST_NAMES := $(basename $(notdir $(TEST_SRCS) $(TEST_CU_SRCS)))
+TEST_OBJS := $(TEST_SRCS:%.cpp=$(OBJ_DIR)/%.o) $(TEST_CU_SRCS:%.cu=$(OBJ_DIR)/%.cu.o)
 DEPS     := $(OBJS:.o=.d) $(TEST_OBJS:.o=.d)
 
 all: $(TARGET)
@@ -82,10 +84,17 @@ $(OBJ_DIR)/%.cu.o: %.cu
 	@mkdir -p $(dir $@)
 	$(NVCC) $(NVCCFLAGS) -MMD -MP -c -o $@ $<
 
-# `make <test-name>` builds tests/<test-name>.cpp into build/tests/<test-name>
-# (linked against all non-main sources); `make run-<test-name>` also runs it.
-$(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
+# Each test owns its entry point; support distinct .cpp and .cu object names.
+CPP_TEST_BINS := $(TEST_SRCS:$(TEST_DIR)/%.cpp=$(OBJ_DIR)/$(TEST_DIR)/%)
+CU_TEST_BINS := $(TEST_CU_SRCS:$(TEST_DIR)/%.cu=$(OBJ_DIR)/$(TEST_DIR)/%)
+ifneq ($(strip $(CPP_TEST_BINS)),)
+$(CPP_TEST_BINS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
 	$(LINK) -o $@ $^
+endif
+ifneq ($(strip $(CU_TEST_BINS)),)
+$(CU_TEST_BINS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.cu.o $(LIB_OBJS)
+	$(LINK) -o $@ $^
+endif
 
 $(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
 
@@ -99,7 +108,7 @@ run: $(TARGET)
 # one clang-tidy job per source file, so `make -jN format` runs N of them at once
 HDRS := $(patsubst ./%,%,$(wildcard $(foreach d,. $(MODULES) $(TEST_DIR),$(foreach e,h hpp,$(d)/*.$(e)))))
 FORMAT_CPP_TARGETS := $(SRCS:%=format/%) $(TEST_SRCS:%=format/%) $(HDRS:%=format/%)
-FORMAT_CU_TARGETS := $(CU_SRCS:%=format/%)
+FORMAT_CU_TARGETS := $(CU_SRCS:%=format/%) $(TEST_CU_SRCS:%=format/%)
 FORMAT_TARGETS := $(FORMAT_CPP_TARGETS) $(FORMAT_CU_TARGETS)
 
 format: $(FORMAT_TARGETS)
@@ -114,7 +123,7 @@ help:
 	@echo "Targets:"
 	@echo "  all                 build $(TARGET) (default)"
 	@echo "  run                 build and run $(TARGET)"
-	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
+	@echo "  <test-name>         build tests/<test-name>.cpp or .cu into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
 	@echo "  clean               remove $(OBJ_DIR)/ and $(TARGET)"

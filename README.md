@@ -17,6 +17,21 @@ representation, material rules, and rendering are still being explored.
 | [Transition variations](experiments/transition_variations/README.md) | Compare cube, face, and edge LUT updates with one thread per tile and double buffering |
 | [CPU update proof of concept](experiments/sim_update_poc/README.md) | Serial updates, per-cell threads, and persistent worker pools |
 
+## World state prototype
+
+The main prototype in `src/` keeps visible dimensions `n,m,k` and allocates
+`(n+2)*(m+2)*(k+2)` cells with an unrendered, one-cell BLOCK shell. Both device
+buffers start with AIR inside and BLOCK outside. Tile access uses visible-world
+coordinates through DeviceWorldView; padding and strides are handled internally.
+The renderer's signed coordinate access also supports the padded halo.
+Face types and packing helpers live in src/state/lut.hpp/cu; LUT loading
+and lookup remain unfinished.
+Material LUT calls in the world tick, scene loading, rendering integration, and buffer swapping
+are still being completed. See the [architecture model](docs/architecture.md).
+
+`make -C src run-world_padding` checks padding and tile access on CUDA hardware.
+Set `CUDA_HOME` if the toolkit is not installed in a standard location.
+
 ## CUDA experiment
 
 ```sh

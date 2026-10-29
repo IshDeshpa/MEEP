@@ -5,24 +5,43 @@
 #include <iostream>
 #include <string_view>
 #include <chrono>
+#include <thread>
 
-FaceETileLUT et_lut; // Tiles should be declared as __constant__ 
 std::size_t tick_counter = 0;
 
 // TODO: variable tick rate
-enum TickRate : std::uint16_t{
-//   Unlimited = 0,
-
+enum TickRate : std::uint16_t { // Measured in ms per tick
+  OneTPS = 1000,
+  TwoTPS = 500,
+  FiveTPS = 200,
+  TenTPS = 100,
+  ThirtyTPS = 34,
+  SixtyTPS = 17,
+  Unlimited = 0,
 };
+TickRate tick_rate = TickRate::SixtyTPS;
 
-void world_tick(WorldState& world) {
+void worldTick(WorldState& world) {
+  using Clock = std::chrono::steady_clock;
+
   while (true) {
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    //call the CPU state_tick() function that dispatches the GPU tick function that dispatches all tiles
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now(); 
-    //wait depending on time taken and tick rate
+    const auto start = Clock::now();
+    const auto period = std::chrono::milliseconds(
+        static_cast<std::uint16_t>(tick_rate));
+
+    world.updateWorld(tick_counter);
+    world.waitForTick(); // wait for state update threads to finish, not just launch
+    ++tick_counter;
+
+    if (period.count() != 0) {
+      // Remaining wait = max(0, period - elapsed).
+      // If the tick overran, the deadline is already past: no extra sleep.
+      std::this_thread::sleep_until(start + period);
+    }
   }
 }
+
+
 
 int main(int argc, char* argv[]){
   dim n = 100, m = 100, k = 100;
@@ -33,7 +52,8 @@ int main(int argc, char* argv[]){
       std::cout << "Usage: " << argv[0]
                 << " [-n N] [-m M] [-k K]\n"
                 << "Aliases: -x for -n, -y for -m, -z for -k.\n"
-                << "Dimensions must be positive integers; each defaults to 100.\n";
+                << "Visible dimensions must be positive integers; each defaults to 100.\n"
+                << "Storage adds one BLOCK cell on each side (+2 per dimension).\n";
       return 0;
     }
 
@@ -61,7 +81,6 @@ int main(int argc, char* argv[]){
                 << " (expected a positive integer)\n";
       return 1;
     }
-
     *dimension = parsed;
   }
 
@@ -72,7 +91,7 @@ int main(int argc, char* argv[]){
     //    needs to take tick rate, which can be changed by user during runtime, into account. 
     //    needs to maybe sync with rendering? 
     //    needs to be able to take in input from user modifying world (maybe not because state mem is unifed, maybe some flag to keep sync?)
-    // function to contain world ticking loop, which calls the indimidual tick cuda kernel, which is global,
+    // function to contain world ticking loop, which calls the individual tick cuda kernel, which is global,
     //    which calls all the tile update functions for all tiles computed in that tick, which is host/device? 
     //    which cells are in which tile depends on phase, which is tick_counter & b'0010 (phase changes every 2 ticks)
     //    which 2 of 4 faces are computed depends on tick_counter & b'0001 (x faces then z faces then repeat)

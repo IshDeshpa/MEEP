@@ -1,6 +1,6 @@
 # MEEP architecture working model
 
-Current discussion: 2026-10-27. This is the project's living architecture note.
+Current discussion: 2026-10-29. This is the project's living architecture note.
 Revise the relevant sections as decisions change; replace superseded proposals
 rather than appending conversation history. Keep confirmed requirements,
 implemented behavior, proposals, and unresolved questions distinct.
@@ -18,35 +18,41 @@ judgment for the user/team; analytical correctness or benchmark speed cannot
 establish it. CPU/GPU reference agreement remains an implementation check,
 separate from whether the resulting behavior looks good.
 
-The initial material set, world size, frame rate, boundary behavior, and class
-requirements for CPU threading or renderer implementation remain open. Dirty
+The initial material set, world size, frame rate, and class requirements for
+CPU threading or renderer implementation remain open. Dirty
 scheduling is optional; the assistant recommends full-world updates initially.
 The status of probabilistic transitions should be confirmed separately.
 
 ## Current implementation and evidence
 
-- `src/state/state.hpp`: flat z-fastest world indexing
-  `z + k * (y + m * x)`; one-byte Cell with 4-bit material and 4-bit state.
-  The spare bits are reserved; age is a post-alpha proposal. A face LUT uses
-  65,536 uint16 entries.
-- `src/state/state.cu`: two device-only arrays allocated with cudaMalloc.
-  Initial-state upload and a synchronization protocol are not yet implemented.
-  CUDA calls use the host-side `CUDA_CHECK` helper in `src/extra/check.hpp`,
-  which throws with call/error/source context without synchronizing. Allocation
-  failure releases any first buffer already allocated; destructor cleanup stays
-  non-throwing. Execution errors from asynchronous work still need a checked
-  completion operation at the appropriate synchronization boundary.
-- `src/main.cpp`: initialization and scheduling comments, not a running
-  simulation loop. Comments propose partition `(tick >> 1) & 1` and orientation
-  `tick & 1`: x faces, z faces, then change partition and repeat.
-- `src/render/render.cu` is a CUDA hello-world stub.
-  `experiments/generic_renderer` is a CPU software-rendering prototype that
-  writes images; it is not an OpenGL implementation.
-- The thread-count and transition-variation experiments measure synthetic
-  rules on fixed partitions. Face/edge experiments support exploring small
-  LUTs but neither prove material behavior nor include shifted-partition costs.
-  Their six-face and twelve-edge workloads differ from the whiteboard's two
-  lookups. See their READMEs for actual measurements and qualifications.
+- `src/state/state.hpp`: one-byte Cells, an eight-cell CubeTile, and
+  DeviceWorldView readTile/writeTile helpers using visible-world coordinates.
+  Renderer-facing dim/coord aliases, Element::COUNT, signed index(coord), and
+  const-correct operator()(coord) are retained from the teammate integration.
+  Extra Cell bits remain reserved.
+- src/state/lut.hpp and lut.cu contain the face types, masks, and packing
+  helpers moved from state. The user's LUT and DeviceLUTView pointer structs
+  remain scaffolding; no loading, allocation, cleanup, or lookup implementation
+  has been added.
+- `src/state/state.cu`: the constructor keeps requested n/m/k and padded
+  dimensions n+2/m+2/k+2, creates a padded host image, initializes an AIR interior
+  and BLOCK shell, and uploads the same image into both device buffers.
+  Allocation sizes and current free VRAM are checked before allocating.
+  The host image is initialization data, not a live simulation mirror.
+- `WorldState::updateWorld` schedules tiles using padded dimensions.
+  The kernel reads a CubeTile, packs/unpacks two faces through placeholder LUT
+  calls, and writes the result. BLOCK immobility belongs entirely to the LUT.
+  Both phases cover every visible cell. Buffer role swapping remains unfinished.
+- `src/main.cpp`: the CPU ticker submits a tick, waits for stream completion,
+  and sleeps until its requested deadline. main does not yet start the ticker.
+- CUDA calls use the teammate's CPU-facing src/extra/check.hpp declaration
+  and src/extra/check.cu implementation; failure paths release partially
+  allocated buffers. GPU completion errors are checked by waitForTick.
+- `src/render/render.cu` is a CUDA hello-world stub; the generic renderer
+  experiment is a CPU image-writing prototype. Neither yet renders live worlds.
+- Scheduling experiments still use synthetic rules and fixed partitions.
+  Their six-face/twelve-edge workloads do not measure the alpha's four-tick
+  schedule, its padding, or complete application performance.
 
 ## Whiteboard overview
 
@@ -72,7 +78,8 @@ world produced by this tick. One tick is one row of the following cycle.
 Then repeat. Partition is `(tick >> 1) & 1`; orientation is `tick & 1`.
 The partition changes every two ticks; ping-pong buffer roles change every tick.
 The y faces, spanning horizontal xz planes, are tentatively omitted. The vertical
-axis is y; its sign and boundary handling still need an explicit convention.
+axis is y; its sign still needs an explicit convention. Partition origins
+refer to padded coordinates under the confirmed BLOCK-shell boundary policy.
 
 This is a distinct update method from both earlier six-face variants:
 independent within each tick's disjoint face pair, sequential between ticks,
@@ -90,54 +97,78 @@ A dirty-bit proposal records whether either the x or z tick changed cells in a
 tile, then derives affected tiles for the next partition. Preserve that proposal
 as an optimization question rather than an alpha requirement.
 
+## Padded world storage
+
+Confirmed boundary policy: exactly one unreactive BLOCK cell on each of the six
+faces, including edges/corners. Requested/visible dimensions remain n,m,k;
+actual allocation dimensions are padded_n=n+2, padded_m=m+2, padded_k=k+2.
+The shell is initialized in the CPU image and both GPU buffers; the interior
+defaults to AIR until scene-loading functionality is added.
+
+WorldState::index(x,y,z) maps visible coordinates to the padded allocation.
+WorldState::paddedIndex(x,y,z) addresses raw storage coordinates for setup or
+diagnostics. Rendering must iterate only the requested dimensions and use the
+visible coordinate mapping; index(coord) and operator()(coord) also accept
+the signed -1/high-edge halo needed for renderer neighbor queries and reject
+coordinates outside it. Const WorldState access returns const Cell&.
+These accessors read the CPU initialization image, not a synchronized live copy.
+The shell must not become rendered voxels or shift
+visible-world positions. Live-world rendering is not yet integrated.
+
+Partition phase 0/1 refers to origins in padded coordinates. Every visible cell
+belongs to a complete tile in both phases, for positive even or odd dimensions.
+Only shell cells can remain uncovered; since both buffers initialize them as
+BLOCK and LUT rules keep BLOCK unchanged, they need no per-tick copy. Normal
+tile writes are unconditional: there is no special BLOCK branch in the kernel
+or buffer helpers. LUT generation must preserve BLOCK locations and immobility.
+
+Initialization checks padding addition, allocation multiplication, signed
+coordinate range, and current free GPU memory for both buffers. The CPU image
+uses owned array storage and is released with delete[]. No wraparound is used.
+
+GPU regression: `make -C src run-world_padding` (set CUDA_HOME as needed).
+It checks initialization of both buffers, visible/padded indexing, helper access
+at low/high halos, every interior cell in both phases, partial thread blocks,
+and buffer parity with test-managed swaps. It records memory estimates and
+actual free/used checks in its output. The material reference currently matches
+the identity LUT placeholders; it is not a physics or performance benchmark.
+
 ## Thread and tile coordinate mapping
 
-The user's cell diagram numbers local cells 1..8 with z changing fastest:
-`label = 1 + 4*dx + 2*dy + dz`, where each offset is 0 or 1.
-World storage also uses z fastest, followed by y and then x. The diagram's faces, in top-left/top-right/bottom-left/
-bottom-right order, are x: [3,4,1,2], [7,8,5,6]; z: [4,8,2,6], [3,7,1,5].
-Both face orientations put increasing y on top and use the same local
-horizontal/vertical convention.
+The diagram's zero-indexed local labels are `c = 4*dx + 2*dy + dz`.
+Face order is top-left, top-right, bottom-left, bottom-right:
+x faces [2,3,0,1] and [6,7,4,5]; z faces [3,7,1,5] and [2,6,0,4].
+Both face orientations put increasing y on top.
 
-The current launch mapping uses a 1D CUDA grid with one thread per full 2x2x2
-tile. CPU `WorldState::update_world` launches `update_tile` with a bounds check
-for the last partial block. The kernel computes tile-grid coordinates tx,ty,tz,
-converts them to world origins, and gathers eight cells with z-fastest strides.
-The kernel now calls `state_transition(tile, face_phase)` on that same thread;
-its rule body remains a stub. Output writes, boundary preservation, and buffer
-swapping are still unimplemented. The helper launches no additional threads.
+The launch uses one thread per complete 2x2x2 tile in padded storage:
+`Tx = (padded_n-p)/2`, `Ty = (padded_m-p)/2`,
+`Tz = (padded_k-p)/2`, where `p = (tick >> 1) & 1`.
+The final partial CUDA block is bounds-checked against Tx*Ty*Tz.
 
-Let n,m,k be world sizes along x,y,z and p = (tick >> 1) & 1.
-The current work-in-progress code selects only non-wrapping tiles:
-Tx = (n-p)/2, Ty = (m-p)/2, Tz = (k-p)/2, using integer division.
-Assume positive dimensions and checked arithmetic. If any tile count is zero,
-skip the tile launch; do not divide by zero or launch zero blocks.
-
-Flatten CUDA thread identity:
+Flatten the 1D launch as
 `tile_id = size_t(blockIdx.x) * blockDim.x + threadIdx.x`.
-Return when tile_id >= Tx*Ty*Tz. Enumerate tile coordinates z fastest:
+Enumerate tiles z fastest:
 `tz = tile_id % Tz`, `ty = (tile_id / Tz) % Ty`,
 `tx = tile_id / (Tz*Ty)`.
-The tile's cell origin is `(x0,y0,z0) = (2*tx+p, 2*ty+p, 2*tz+p)`.
 
-World cell addressing is `index(x,y,z) = z + k*(y + m*x)`.
-Let base = index(x0,y0,z0), sx = m*k, sy = k, sz = 1.
-Diagram cells 1..8 then have addresses:
-`[base, base+1, base+sy, base+sy+1,
-  base+sx, base+sx+1, base+sx+sy, base+sx+sy+1]`.
-A tile ID is not a world-cell index and is not incremented to access its cells.
+Padded origins are (2*tx+p, 2*ty+p, 2*tz+p).
+The kernel converts these to signed visible-world origins by subtracting one
+per axis, then calls `buffers.readTile(x,y,z)` and
+`buffers.writeTile(x,y,z,next_tile)`.
+An origin of -1 includes low padding and visible cell 0. An origin of n-1
+includes visible cell n-1 and high padding n along x; analogously for y/z.
+Callers must supply origins whose full tile lies within the allocation.
 
-For an 8x6x4 world at p=0, the tile grid is 4x3x2.
-Tile 5 has tile coordinates (0,2,1), world origin (0,4,2), and base index 18.
-Its diagram-ordered addresses are [18,19,22,23,42,43,46,47].
+DeviceWorldView hides the padding offset and physical strides:
+`index(x,y,z) = (z+1) + padded_k*((y+1) + padded_m*(x+1))`.
+Offsets for local cells 0..7 are
+`[0,1,sy,sy+1,sx,sx+1,sx+sy,sx+sy+1]`,
+with `sy=padded_k` and `sx=padded_m*padded_k`.
 
-This mapping excludes boundary cells when they do not fit in a complete tile.
-For even dimensions, partition 1 leaves the outermost layer on all six sides
-outside the tile updates. Those cells must still be correctly populated in
-next before swapping buffers. Preserving them makes them static under that
-tick, not automatically solid walls. A final boundary rule is still open.
-Periodic boundaries instead require different tile counts and per-coordinate
-wrapping; simply reusing the additive addresses above at an edge is incorrect.
+For a requested 6x4x2 world, storage is 8x6x4. At p=0 the tile grid is 4x3x2.
+Tile 5 has tile coordinates (0,2,1), padded origin (0,4,2), visible-world origin
+(-1,3,1), and base index 18. Its eight addresses are
+[18,19,22,23,42,43,46,47].
 
 ## Cell representation and future aging
 
@@ -152,15 +183,15 @@ assertion. The earlier uint64_t representation and pack_cube/unpack_cube helpers
 have been removed from the current source. The transition takes a CubeTile value
 and a face phase and returns a CubeTile; the material LUT calls are unfinished.
 
-The header now provides CPU/GPU-callable constexpr pack_face and unpack_face
-helpers. pack_face reads four selected `.elem` fields at shifts 12,8,4,0;
-unpack_face writes the four returned nibbles to the specified output cells.
-state_transition uses [2,3,0,1] and [6,7,4,5] for x faces, or [3,7,1,5] and
+lut.hpp declares CPU/GPU-callable packFace and unpackFace helpers;
+their runtime definitions are in lut.cu. packFace reads four selected `.elem` fields at shifts 12,8,4,0;
+unpackFace writes the four returned nibbles to the specified output cells.
+stateTransition uses [2,3,0,1] and [6,7,4,5] for x faces, or [3,7,1,5] and
 [2,6,0,4] for z faces, for both packing and unpacking. LUT calls are placeholders,
 so the face path currently returns the input unchanged. next_tile starts as a
 copy of the input; unpacking replaces only elements and preserves reserved
 state bits at their existing positions. This does not implement age-preserving
-movement, which remains outside alpha. World output writes are still pending.
+movement, which remains outside alpha. The kernel now scatters the result to the next world buffer.
 
 
 The future age proposal includes fire producing hot air that rises relative to
@@ -197,32 +228,63 @@ not a world store shared with the CPU.
 
 ## Kernel parameters and class ownership
 
-Current implementation: the CPU member `WorldState::update_world(tick)` owns
-launch preparation. The free CUDA kernel `update_tile` receives current/next
-device pointers, m/k cell strides, tiles_y/tiles_z, tile_count, and both phases.
-The input pointer is const. n and tiles_x are not separately needed by this
-kernel: total tile count and the y/z grid extents determine its x coverage.
+The CPU member `WorldState::updateWorld(tick)` owns launch preparation.
+It passes a fresh `deviceView()` by value, along with tiles_y/tiles_z,
+tile_count, partition phase, and face phase. DeviceWorldView contains current
+and next device pointers and the padded y/z dimensions used as strides.
+This copies metadata and pointer values, not world contents. Reacquire a view
+after buffer roles change; an existing view retains its captured pointers.
 
-CUDA __global__ kernels cannot be class members. __device__ helper methods
-can be members, but their object must be accessible to device code. A CPU
-WorldState object containing device pointer values does not itself become
-device-accessible; do not pass its ordinary host this pointer to the kernel.
+The view exposes index(x,y,z), readTile(x,y,z), and
+writeTile(x,y,z,tile). They take visible-world coordinates, apply padding
+internally, and perform no material filtering. The current-buffer pointer is
+read-only. The helpers are CPU/GPU-callable methods defined in state.cu;
+their declarations use MEEP_HOST_DEVICE from extra/cuda_compat.hpp.
+Both C++ and CUDA callers see the complete DeviceWorldView declaration.
+The macro retains CUDA annotations under nvcc and expands to nothing for
+ordinary C++ compilation. Dereferencing
+device pointers is valid only from an execution space that can access them.
 
-Explicit scalar/pointer parameters are the current small-step choice.
-Assistant recommendation if the argument list grows: pass a small trivially
-copyable, non-owning device view by value, containing device pointers and
-dimensions, plus per-launch phases/grid metadata. This copies metadata and
-pointer values, not world contents. Keep ownership/destruction in the CPU
-class; its host world pointer and allocation logic do not belong in the view.
-A view may have __device__ or __host__ __device__ indexing helpers.
+The owning WorldState remains on the CPU and manages allocations/destruction.
+A CPU object containing device pointer values does not itself become
+device-accessible. CUDA __global__ kernels cannot be class members; __device__
+helpers can be. The small, trivially copyable view separates device access from
+ownership and avoids passing an ordinary host this pointer to a kernel.
 
-Choose individual parameters versus a view by interface size, reuse across
-kernels, and clarity. Neither is automatically faster; inspect generated code
-and measure if parameter handling matters. Device-resident shared metadata is
-a further option for large/dynamic state, with explicit update ordering and
-lifetime requirements. Avoid global/constant symbols for changing per-world
-launch state by default. Pass partition and face phase by value per launch.
+Phases remain per-launch values. No performance advantage over individual
+parameters is assumed; inspect generated code and measure if this matters.
 Source: [CUDA class and kernel restrictions](https://docs.nvidia.com/cuda/cuda-programming-guide/05-appendices/cpp-language-support.html#function-members).
+
+## Tick pacing
+
+worldTick remains a CPU loop. TickRate enum values represent integer
+milliseconds per tick; zero means Unlimited. Each iteration snapshots its period,
+records a steady-clock start, submits updateWorld, waits for GPU completion
+through WorldState::waitForTick, and increments the completed tick counter.
+For nonzero periods it calls std::this_thread::sleep_until(start + period).
+The effective remaining sleep is max(0, period - elapsed), including GPU work.
+
+Overruns start the next iteration immediately without accumulated catch-up
+ticks. Unlimited removes deliberate pacing but still waits for each GPU tick,
+bounding outstanding simulation work to one tick. OS scheduling can wake a
+sleeping thread late. The 17 ms and 34 ms enum values target approximately
+58.82 and 29.41 ticks/s respectively, not exactly 60 and 30.
+
+waitForTick currently synchronizes the same default CUDA stream used by
+updateWorld and checks asynchronous errors. It is not a device-wide wait,
+but legacy-default-stream dependencies can still couple it to other work.
+Use a dedicated simulation stream and explicit rendering handoffs before
+expecting independent GPU simulation/rendering. A separate CPU thread alone
+does not establish GPU independence or pin that thread to a CPU core.
+
+The ticker is still not started by main. Default padded-state upload and
+boundary preservation are implemented; buffer role swapping is still pending.
+Scene loading and material LUT calls also remain unfinished. A future
+cross-thread tick-rate setter needs atomic or locked access; the current rate
+is a plain global read by the ticker.
+
+References: [C++ thread sleeping](https://eel.is/c++draft/thread.thread.this)
+and [CUDA stream synchronization](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/advanced-host-programming.html#more-on-streams-and-events).
 
 ## Proposed step and ownership contract
 
@@ -255,11 +317,10 @@ must be revisited if rules read outside their tile.
 
 - **Fixed partition:** isolated tiles never exchange material. Shift the
   partition and test movement across old tile boundaries.
-- **Boundary coverage:** even/odd tilings need an explicit boundary policy.
-  Periodic wrapping is simple for reference tests; a bounded material world
-  likely needs walls/padding and defined treatment of uncovered cells.
-  Require supported dimensions explicitly; positive dimensions alone are not
-  sufficient for straightforward 2x2x2 tiling.
+- **Boundary coverage:** the one-cell BLOCK shell resolves omitted visible
+  edge cells in both partitions. Keep logical coordinates distinct from padded
+  indices and initialize both buffers. LUT rules must keep BLOCK static; do
+  not hide a broken rule behind material-specific buffer-write filtering.
 - **Incomplete next buffer:** skipping clean tiles without copying them or
   another validity scheme exposes state from an older tick after swapping.
 - **Dirty does not mean permanently inactive:** a tile unchanged under x rules
@@ -316,6 +377,75 @@ The full 16-material cube LUT is unsuitable for the documented 8 GiB RTX 2070.
 The current nibble-key face LUT reserves all 16^4 entries even when fewer
 materials are used. Reaching exactly M^4 entries for M < 16 requires dense
 base-M encoding rather than uncompressed four-nibble indexing.
+
+## LUT ownership and memory placement
+
+Current code: lut.hpp contains the face type, table alias, nibble masks,
+pack/unpack declarations, and the user's simple LUT/DeviceLUTView pointer
+structs. lut.cu contains only the face packing/unpacking definitions moved from
+state.cu. File loading, GPU allocation/cleanup, lookup, and world-tick wiring
+remain unimplemented.
+
+Intended design, not an implementation request: a CPU owner can use a
+constructor/destructor for its GPU allocation and expose a trivial read-only
+view passed by value. The owner must outlive every GPU use. The generator's
+file format is 65,536 little-endian uint16 entries (131,072 bytes).
+Any future loader can use temporary CPU staging and a one-time upload.
+
+Keep structural moves separate from feature implementation: do not implement
+the LUT owner or lookup just because its planned interface is being discussed
+or its source files are being reorganized.
+
+Confirmed source layout: state.hpp and lut.hpp include extra/cuda_compat.hpp.
+That shared header defines MEEP_DEVICE and MEEP_HOST_DEVICE using one
+__CUDACC__ conditional: CUDA annotations under nvcc, empty replacements for
+ordinary C++ compilation. Neither state nor LUT headers need surrounding CUDA
+guards. Do not redefine CUDA's reserved annotation names. Empty macros do not
+provide CPU implementations of device-only functions.
+
+All method bodies remain in .cu files with their execution annotations,
+organized by responsibility. Private updateTile and stateTransition
+declarations stay inside state.cu's anonymous namespace.
+
+CUDA execution annotations remain on public device-callable declarations.
+A local NVCC 12.6 check accepted a later host/device redeclaration with a
+warning in the same translation unit, but a separate GPU caller seeing only
+the unannotated declaration failed as a call to a host-only function.
+Definition-only annotations therefore do not support the separate callers.
+
+Runtime helpers do not need constexpr/inline for optimization. constexpr
+permits constant evaluation and imposes inline definition-visibility rules.
+The build enables -rdc=true and -dlto during CUDA compilation and linking,
+allowing out-of-line helpers and cross-file device optimization after moving
+face helpers to lut.cu. Inlining remains a compiler decision.
+
+The merged Makefile preserves CUDA host-compiler selection, ZLUDA options,
+renderer definitions/assets, and distinct .o/.cu.o names for same-stem sources.
+CUDA tests build as separate executables rather than being linked into main.
+WorldState exposes one updateWorld entry point; there is no compatibility
+wrapper. Functions use lowerCamelCase, and parameters/local variables use
+snake_case throughout main, state, and LUT code.
+
+Validation: application build/startup, six-size padded-world GPU regression,
+signed renderer halo access, and geometry loading pass. LUT-specific loading
+and lookup tests are not part of the current code.
+Sources: [CUDA separate compilation](https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/#using-separate-compilation-in-cuda)
+and [C++ constexpr rules](https://eel.is/c++draft/dcl.constexpr).
+
+C++ const restricts writes through an interface; it does not select a CUDA memory
+space. cudaMalloc storage remains global memory. CUDA __constant__ arrays use
+a separate 64 KiB space, so the current complete face LUT cannot fit.
+Putting only a pointer in __constant__ storage does not move its pointees there.
+Constant-memory requests serialize for distinct addresses within a warp, making
+access patterns important even for a smaller table that fits.
+
+Start with read-only global-memory lookup. Explicit texture fetching and
+read-only-cache load choices are later profiling alternatives; const alone
+does not create a texture. No cache-hit or throughput advantage is claimed.
+A device-global pointer would avoid explicit parameters but introduce hidden,
+per-device shared configuration; prefer the view for ownership and testability.
+
+Source: [CUDA memory guidance](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#constant-memory).
 
 ## Two tier transitions after alpha
 
@@ -436,7 +566,8 @@ No interactive edit implementation is needed for alpha.
 Before the first integrated simulation:
 - Which initial scenes and material rules best reveal whether face movement is
   worth pursuing?
-- What are gravity's sign, boundary behavior, and supported world dimensions?
+- What is gravity's sign? Padding and coverage now support positive dimensions
+  of either parity.
 - What world size, tick rate, and frame rate are the initial targets?
 - Is the intended renderer CPU software, custom CUDA, or a graphics API?
 - Does the class require a particular CPU-threading or rendering approach?
@@ -463,8 +594,8 @@ Deferred but important:
 
 ## Alpha milestones
 
-1. Define initial scenes, face rules, coordinate conventions, and boundary
-   policy for the confirmed four-tick schedule.
+1. Define initial scenes, face rules, and gravity convention for the confirmed
+   four-tick schedule and padded BLOCK boundary.
 2. Implement the full-world two-face GPU tick and independent CPU reference.
    Compare every tick across both orientations/partitions and buffer parities.
 3. Load a fixed initial world and display its evolution. Judge face movement

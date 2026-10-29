@@ -1,42 +1,39 @@
 #pragma once
+#include "extra/cuda_compat.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
-#include <stdint.h>
-
-#include <glm/glm.hpp>
-using namespace glm;
+#include <type_traits>
+#include <glm/vec3.hpp>
 
 using dim = std::size_t;
-using coord = ivec3;
+using coord = glm::ivec3;
 
-// TODO: we could wrap some of these with classes that have APIs to operate on the data,
-// these are just the core, minimal reprs. of data to send to the GPU
-
-
-// TODO: change debug elements to be highest number elements in order to use shifting to quickly differentiate 
+// TODO: reserve the highest material IDs for debug elements.
 enum class Element : std::uint8_t {
   AIR = 0,
-  WATER,
-  EARTH,
-  LAVA,
+  WATER = 1,
+  EARTH = 2,
+  LAVA = 3,
   // debug
-  BLOCK,
-  EMITTER,
-  VOID,
-  COUNT
+  BLOCK = 4,
+  EMITTER = 5,
+  VOID = 6,
+  COUNT = 7
 };
 
 // A cell contains all the information that needs to be in world state about
 // a single cell
-struct Cell{
+struct Cell {
   Element elem: 4;
-  uint8_t state: 4; // expand out to separate fields later based on what we want
+  std::uint8_t state: 4; // expand out to separate fields later based on what we want
 };
 
+struct DeviceWorldView;
+
 struct WorldState {
-  dim n, m, k;
-  Cell* world;
+  dim n, m, k; // Requested, visible dimensions.
+  std::size_t n_pad, m_pad, k_pad; // One BLOCK cell on each side.
+  Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
   Cell* d_next;
 
@@ -44,17 +41,20 @@ struct WorldState {
   ~WorldState();
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
-  // Flat [x][y][z] storage: z is contiguous; strides are m*k, k, 1.
+  // Visible coordinates [0,n) x [0,m) x [0,k), shifted into padded storage.
   size_t index(size_t x, size_t y, size_t z) const;
-  size_t index(coord c) const {
-    return index(static_cast<size_t>(c.x), static_cast<size_t>(c.y),
-                 static_cast<size_t>(c.z));
-  }
-  Cell& operator()(coord c) const { return world[index(c)]; }
+  // Signed renderer coordinates can address the one-cell BLOCK halo.
+  size_t index(coord c) const;
+  // These access the CPU initialization/snapshot image, not live GPU memory.
+  Cell& operator()(coord c);
+  const Cell& operator()(coord c) const;
+  // Raw padded coordinates; z is contiguous, with strides m_pad*k_pad,
+  // k_pad, 1. Rendering should iterate visible dimensions and use index().
+  size_t paddedIndex(size_t x, size_t y, size_t z) const;
+  // Capture the current device-buffer roles and padded strides for a launch.
+  DeviceWorldView deviceView() const;
   void updateWorld(std::size_t tick);
-
-  //TODO: margolus neighborhood fetch & modify functions. Neighborhoods are either 2x2x2 starting at even (0,0,0) or at odd (1,1,1) coords.
-  //      Need these for both CPU & GPU, these will probably be different
+  void waitForTick(); // Wait for the current simulation stream to finish.
 };
 
 /*
@@ -79,27 +79,28 @@ struct CubeTile {
   Cell cells[8];
 };
 
-
-/*
-* e00 e01
-* e10 e11
-*/
-using FaceETile = uint16_t; // 0-[15:12], 1-[11:8], 2-[7:4], 3-[3:0]
-
-/* 0x0123 = 
-* air   water
-* earth lava
-*/
-constexpr FaceETile cell0 = 0xF000;
-constexpr FaceETile cell1 = 0x0F00;
-constexpr FaceETile cell2 = 0x00F0;
-constexpr FaceETile cell3 = 0x000F;
-
-// Our "FSM", really a lookup from input FaceETile -> output FaceETile
-using FaceETileLUT=FaceETile[UINT16_MAX+1];
-
-// Sizing assertions, change later if necessary
 static_assert(sizeof(Cell) == 1);
 static_assert(sizeof(CubeTile) == 8 * sizeof(Cell));
-static_assert(sizeof(FaceETile) == sizeof(uint16_t));
+
+// Non-owning view passed by value; it does not copy world cells.
+struct DeviceWorldView {
+  const Cell* curr;
+  Cell* next;
+  std::size_t m_pad, k_pad;
+
+  // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
+  MEEP_HOST_DEVICE
+  std::size_t index(std::ptrdiff_t x, std::ptrdiff_t y,
+                    std::ptrdiff_t z) const noexcept;
+
+  // Caller guarantees the full tile fits, including origins at -1.
+  MEEP_HOST_DEVICE
+  CubeTile readTile(std::ptrdiff_t x, std::ptrdiff_t y,
+                    std::ptrdiff_t z) const noexcept;
+
+  MEEP_HOST_DEVICE
+  void writeTile(std::ptrdiff_t x, std::ptrdiff_t y, std::ptrdiff_t z,
+                  const CubeTile& tile) const noexcept;
+};
+static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
 
