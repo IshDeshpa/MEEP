@@ -24,8 +24,6 @@ void world_tick(WorldState& world) {
   }
 }
 
-
-
 int main(int argc, char* argv[]){
   dim n = 100, m = 100, k = 100;
 
@@ -63,6 +61,7 @@ int main(int argc, char* argv[]){
                 << " (expected a positive integer)\n";
       return 1;
     }
+
     *dimension = parsed;
   }
 
@@ -73,7 +72,7 @@ int main(int argc, char* argv[]){
     //    needs to take tick rate, which can be changed by user during runtime, into account. 
     //    needs to maybe sync with rendering? 
     //    needs to be able to take in input from user modifying world (maybe not because state mem is unifed, maybe some flag to keep sync?)
-    // function to contain world ticking loop, which calls the individual tick cuda kernel, which is global,
+    // function to contain world ticking loop, which calls the indimidual tick cuda kernel, which is global,
     //    which calls all the tile update functions for all tiles computed in that tick, which is host/device? 
     //    which cells are in which tile depends on phase, which is tick_counter & b'0010 (phase changes every 2 ticks)
     //    which 2 of 4 faces are computed depends on tick_counter & b'0001 (x faces then z faces then repeat)

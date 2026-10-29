@@ -8,6 +8,29 @@
 
 #define TILE_PHASE_SHIFT(tile_coord, tile_phase) 2 * tile_coord + tile_phase
 
+__device__ FaceETile pack_face(const CubeTile& tile, unsigned tl, unsigned tr,
+                              unsigned bl, unsigned br) {
+    return static_cast<FaceETile>(
+        (static_cast<unsigned>(tile.cells[tl].elem) << 12) |
+        (static_cast<unsigned>(tile.cells[tr].elem) << 8) |
+        (static_cast<unsigned>(tile.cells[bl].elem) << 4) |
+        static_cast<unsigned>(tile.cells[br].elem));
+}
+
+__device__ void unpack_face(FaceETile face, CubeTile& tile, unsigned tl,
+                            unsigned tr, unsigned bl, unsigned br) {
+    tile.cells[tl].elem = static_cast<Element>((face >> 12) & 0xF);
+    tile.cells[tr].elem = static_cast<Element>((face >> 8) & 0xF);
+    tile.cells[bl].elem = static_cast<Element>((face >> 4) & 0xF);
+    tile.cells[br].elem = static_cast<Element>(face & 0xF);
+}
+
+__device__ CubeTile state_transition(CubeTile tile, size_t face_phase);
+__global__ void update_tile(const Cell* d_curr, Cell* d_next,
+                            size_t m, size_t k, size_t tiles_y,
+                            size_t tiles_z, size_t tile_count,
+                            size_t tile_phase, size_t face_phase);
+
 
 WorldState::WorldState(size_t n, size_t m, size_t k) //TODO: add filepath to initialization file. 
     : n(n), m(m), k(k), world(nullptr), d_curr(nullptr), d_next(nullptr) {
@@ -42,7 +65,7 @@ size_t WorldState::index(size_t x, size_t y, size_t z) const {
     return z + k * (y + m * x);
 }
 
-void WorldState::update_world(std::size_t tick) {
+void WorldState::updateWorld(std::size_t tick) {
     const size_t tile_phase = (tick >> 1) & 1; // Partition origin offset: 0 or 1.
     const size_t tiles_x = (n - tile_phase) / 2;
     const size_t tiles_y = (m - tile_phase) / 2;

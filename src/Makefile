@@ -3,7 +3,7 @@ GLM_DIR  := glm
 OBJ_DIR  := build
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state 
+MODULES  := render state extra
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
 DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
@@ -17,6 +17,7 @@ ARGS     ?=
 # libcuda replacement ahead of the system one on LD_LIBRARY_PATH at runtime.
 BACKEND   ?= cuda
 ZLUDA_DIR ?= /mnt/Work/zluda
+ROCM_LIB_DIR ?= /opt/rocm/lib
 
 ifeq ($(BACKEND),zluda)
 CUDA_HOME ?= /mnt/Work/cuda-12.9
@@ -40,7 +41,7 @@ CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
 
 ifeq ($(BACKEND),zluda)
-RUN_ENV := env LD_LIBRARY_PATH=$(ZLUDA_DIR)$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
+RUN_ENV := env LD_LIBRARY_PATH=$(ZLUDA_DIR):$(ROCM_LIB_DIR)$(if $(LD_LIBRARY_PATH),:$(LD_LIBRARY_PATH))
 else ifeq ($(BACKEND),cuda)
 RUN_ENV :=
 else
@@ -55,7 +56,7 @@ vpath %.cu  $(MODULES) $(TEST_DIR)
 vpath %.h   $(MODULES)
 vpath %.hpp $(MODULES)
 SRCS     := $(wildcard *.cpp $(MODULES:%=%/*.cpp))
-CU_SRCS  := $(wildcard *.cu $(MODULES:%=%/*.cu))
+CU_SRCS  := $(wildcard *.cu $(MODULES:%=%/*.cu) tests/*.cu)
 # Keep CUDA objects distinct when a .cpp and .cu share the same basename.
 OBJS     := $(SRCS:%.cpp=$(OBJ_DIR)/%.o) $(CU_SRCS:%.cu=$(OBJ_DIR)/%.cu.o)
 # nvcc drives the link when any CUDA sources are present (pulls in cudart)
@@ -97,12 +98,17 @@ run: $(TARGET)
 # rename parameters/locals to match .clang-tidy
 # one clang-tidy job per source file, so `make -jN format` runs N of them at once
 HDRS := $(patsubst ./%,%,$(wildcard $(foreach d,. $(MODULES) $(TEST_DIR),$(foreach e,h hpp,$(d)/*.$(e)))))
-FORMAT_TARGETS := $(SRCS:%=format/%) $(TEST_SRCS:%=format/%) $(HDRS:%=format/%)
+FORMAT_CPP_TARGETS := $(SRCS:%=format/%) $(TEST_SRCS:%=format/%) $(HDRS:%=format/%)
+FORMAT_CU_TARGETS := $(CU_SRCS:%=format/%)
+FORMAT_TARGETS := $(FORMAT_CPP_TARGETS) $(FORMAT_CU_TARGETS)
 
 format: $(FORMAT_TARGETS)
 
-$(FORMAT_TARGETS): format/%:
+$(FORMAT_CPP_TARGETS): format/%:
 	clang-tidy --fix --fix-errors $* -- -x c++ $(CXXFLAGS)
+
+$(FORMAT_CU_TARGETS): format/%.cu: %.cu
+	clang-tidy --fix --fix-errors $< -- -x cuda $(CXXFLAGS) $(if $(CUDA_INC),-I$(CUDA_INC))
 
 help:
 	@echo "Targets:"
@@ -110,7 +116,7 @@ help:
 	@echo "  run                 build and run $(TARGET)"
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
-	@echo "  format              run clang-tidy --fix on all sources and headers"
+	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
 	@echo "  clean               remove $(OBJ_DIR)/ and $(TARGET)"
 	@echo "  help                show this message"
 	@echo
@@ -121,6 +127,7 @@ help:
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
 	@echo "  ZLUDA_DIR=$(ZLUDA_DIR)"
+	@echo "  ROCM_LIB_DIR=$(ROCM_LIB_DIR)"
 	@echo "  CUDA_HOME=$(CUDA_HOME)"
 	@echo "  CUDA_HOST_CXX=$(CUDA_HOST_CXX) (empty uses nvcc's default host compiler)"
 	@echo "  CUDA_INC=$(CUDA_INC)"
