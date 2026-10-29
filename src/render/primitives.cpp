@@ -71,3 +71,12 @@ void Geometry::save(const std::string &path){
   outf.close();
   if(!outf) throw std::runtime_error("Failed to write OBJ: " + path);
 }
+
+void Geometry::print(){
+  for(Tri &t : this->tris){
+    std::printf("(%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f)\n", 
+                this->verts[t.x].x, this->verts[t.x].y, this->verts[t.x].z,
+                this->verts[t.y].x, this->verts[t.y].y, this->verts[t.y].z,
+                this->verts[t.z].x, this->verts[t.z].y, this->verts[t.z].z);
+  }
+}

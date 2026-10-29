@@ -1,4 +1,5 @@
 #include "render/render.hpp"
+#include <stdio.h>
 
 __global__ void helloWorldKernel(){
   printf("Hello World!\n");

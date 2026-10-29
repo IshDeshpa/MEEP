@@ -10,6 +10,7 @@ DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 TARGET   := main
+ARGS     ?=
 
 # GPU backend: `make BACKEND=cuda` (default, native CUDA) or `make BACKEND=zluda`.
 # ZLUDA defaults to the manual CUDA 12.9 install with GCC 14, and puts its
@@ -88,10 +89,10 @@ $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
 $(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
 
 $(TEST_NAMES:%=run-%): run-%: %
-	$(RUN_ENV) ./$(OBJ_DIR)/$(TEST_DIR)/$*
+	$(RUN_ENV) ./$(OBJ_DIR)/$(TEST_DIR)/$* $(ARGS)
 
 run: $(TARGET)
-	$(RUN_ENV) ./$(TARGET)
+	$(RUN_ENV) ./$(TARGET) $(ARGS)
 
 # rename parameters/locals to match .clang-tidy
 # one clang-tidy job per source file, so `make -jN format` runs N of them at once
@@ -117,6 +118,7 @@ help:
 	@echo "Modules:     $(MODULES)"
 	@echo
 	@echo "Variables (override as make VAR=value):"
+	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
 	@echo "  ZLUDA_DIR=$(ZLUDA_DIR)"
 	@echo "  CUDA_HOME=$(CUDA_HOME)"

@@ -1,3 +1,6 @@
+Style:
+  QuotedHeaders: ['(.*/)?(render|state)/.*', '(.*/)?config\.hpp']
+  AngledHeaders: ['(.*/)?glm/.*']
 CompileFlags:
   Add: [-std=c++20, -I., -Iglm]
   # Remove NVCC flags and the separate host-compiler argument for clangd.
