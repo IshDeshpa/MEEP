@@ -24,13 +24,13 @@ std::vector<Cell> download(const Cell* buffer, size_t count) {
 __global__ void exercise_tile_view(DeviceWorldView buffers,
                                    std::ptrdiff_t x, std::ptrdiff_t y,
                                    std::ptrdiff_t z) {
-    CubeTile tile = buffers.readTile(x, y, z);
+    CubeTile tile = buffers.read_tile(x, y, z);
     for (unsigned c = 0; c < 8; ++c) {
         tile.cells[c].elem = static_cast<Element>(
             (static_cast<unsigned>(tile.cells[c].elem) + 1) & 15);
         tile.cells[c].state = (tile.cells[c].state + c + 1) & 15;
     }
-    buffers.writeTile(x, y, z, tile);
+    buffers.write_tile(x, y, z, tile);
 }
 
 void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
@@ -57,10 +57,10 @@ void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
 
         CUDA_CHECK(cudaMemcpy(world.d_next, source.data(), bytes,
                               cudaMemcpyHostToDevice));
-        exercise_tile_view<<<1, 1>>>(world.deviceView(),
+        exercise_tile_view<<<1, 1>>>(world.device_view(),
                                      origin[0], origin[1], origin[2]);
         CUDA_CHECK(cudaGetLastError());
-        world.waitForTick();
+        world.wait_for_tick();
         const auto actual = download(world.d_next, source.size());
         require(std::memcmp(actual.data(), expected.data(), bytes) == 0,
                 "Tile helper used wrong coordinates, touched other cells, or filtered BLOCK");
@@ -107,7 +107,7 @@ void check_world(size_t n, size_t m, size_t k) {
                 const bool border = x == 0 || x == n + 1 ||
                                     y == 0 || y == m + 1 ||
                                     z == 0 || z == k + 1;
-                require(world.paddedIndex(x, y, z) == address,
+                require(world.padded_index(x, y, z) == address,
                         "Padded indexing mismatch");
                 expected[address] = Cell{border ? Element::BLOCK : Element::AIR, 0};
                 if (!border)
@@ -152,8 +152,9 @@ void check_world(size_t n, size_t m, size_t k) {
         // Padding in this destination retains its initialized BLOCK value.
         CUDA_CHECK(cudaMemcpy(world.d_next, poisoned.data(), bytes,
                               cudaMemcpyHostToDevice));
-        world.updateWorld(tick);
-        world.waitForTick();
+        if (tick & 1) world.updateWorld(tick);
+        else world.update_world(tick);
+        world.wait_for_tick();
         const auto actual = download(world.d_next, count);
         require(std::memcmp(actual.data(), expected.data(), bytes) == 0,
                 "Tick missed an interior cell, changed padding, or misindexed cells");

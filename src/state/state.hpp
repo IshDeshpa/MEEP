@@ -1,5 +1,8 @@
 #pragma once
+
 #include "extra/cuda_compat.hpp"
+#include "lut.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
@@ -53,8 +56,9 @@ struct WorldState {
   size_t paddedIndex(size_t x, size_t y, size_t z) const;
   // Capture the current device-buffer roles and padded strides for a launch.
   DeviceWorldView deviceView() const;
-  void updateWorld(std::size_t tick);
+  void updateWorld(std::size_t tick, LUT& lut);
   void waitForTick(); // Wait for the current simulation stream to finish.
+  void swapBuffers();
 };
 
 /*

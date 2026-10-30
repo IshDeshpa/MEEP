@@ -1,5 +1,4 @@
 #include "state.hpp"
-#include "lut.hpp"
 #include "config.hpp"
 #include "extra/check.hpp"
 
@@ -9,8 +8,8 @@
 #include <stdexcept>
 
 namespace {
-__device__ CubeTile stateTransition(CubeTile tile, size_t face_phase);
-__global__ void updateTile(DeviceWorldView buffers,
+__device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase);
+__global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
                            size_t tile_phase, size_t face_phase);
 } // namespace
@@ -120,7 +119,7 @@ DeviceWorldView WorldState::deviceView() const {
     return {d_curr, d_next, m_pad, k_pad};
 }
 
-void WorldState::updateWorld(std::size_t tick) {
+void WorldState::updateWorld(std::size_t tick, LUT& lut) {
     const size_t tile_phase = (tick >> 1) & 1; // Partition origin offset: 0 or 1.
     const size_t tiles_x = (n_pad - tile_phase) / 2;
     const size_t tiles_y = (m_pad - tile_phase) / 2;
@@ -133,7 +132,7 @@ void WorldState::updateWorld(std::size_t tick) {
 
     const size_t blocks = 1 + (tile_count - 1) / THREADS_PER_BLOCK;
     updateTile<<<blocks, THREADS_PER_BLOCK>>>(
-        deviceView(), tiles_y, tiles_z, tile_count,
+        deviceView(), lut.deviceView(), tiles_y, tiles_z, tile_count,
         tile_phase, face_phase);
     CUDA_CHECK(cudaGetLastError()); // Checks submission, not GPU completion.
 }
@@ -142,6 +141,10 @@ void WorldState::waitForTick() {
     // Launches currently use the default stream. Move both launch and wait
     // to a dedicated simulation stream before overlapping GPU rendering.
     CUDA_CHECK(cudaStreamSynchronize(nullptr));
+}
+
+void WorldState::swapBuffers() {
+    std::swap(d_curr, d_next);
 }
 
 
@@ -188,7 +191,7 @@ void DeviceWorldView::writeTile(std::ptrdiff_t x, std::ptrdiff_t y,
 
 namespace {
 
-__global__ void updateTile(DeviceWorldView buffers,
+__global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
                            size_t tile_phase, size_t face_phase) {
     const size_t tile_id = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -206,7 +209,7 @@ __global__ void updateTile(DeviceWorldView buffers,
     const auto z = static_cast<std::ptrdiff_t>(2 * tz + tile_phase) - 1;
 
     const CubeTile tile = buffers.readTile(x, y, z);
-    const CubeTile next_tile = stateTransition(tile, face_phase);
+    const CubeTile next_tile = stateTransition(lut, tile, face_phase);
     buffers.writeTile(x, y, z, next_tile);
 
     // Uncovered cells are padding only and retain their initialized BLOCK value.
@@ -214,7 +217,7 @@ __global__ void updateTile(DeviceWorldView buffers,
 }
 
 
-__device__ CubeTile stateTransition(CubeTile tile, size_t face_phase) {
+__device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase) {
     CubeTile next_tile = tile; // Keep reserved state bits initialized.
 #if FACE_TRANSITION
     FaceETile face_0, face_1;
@@ -222,15 +225,15 @@ __device__ CubeTile stateTransition(CubeTile tile, size_t face_phase) {
     if (face_phase == 0) { // x faces
         face_0 = packFace(tile, 2, 3, 0, 1);
         face_1 = packFace(tile, 6, 7, 4, 5);
-        // face 0 = lookup
-        // face 1 = lookup
+        face_0 = lut.lookup(face_0);
+        face_1 = lut.lookup(face_1);
         unpackFace(face_0, next_tile, 2, 3, 0, 1);
         unpackFace(face_1, next_tile, 6, 7, 4, 5);
     } else {              // z faces
         face_0 = packFace(tile, 3, 7, 1, 5);
         face_1 = packFace(tile, 2, 6, 0, 4);
-        // face 0 = lookup
-        // face 1 = lookup
+        face_0 = lut.lookup(face_0);
+        face_1 = lut.lookup(face_1);
         unpackFace(face_0, next_tile, 3, 7, 1, 5);
         unpackFace(face_1, next_tile, 2, 6, 0, 4);
     }

@@ -1,4 +1,5 @@
 #include "state/state.hpp"
+#include "state/lut.hpp"
 
 #include <charconv>
 #include <exception>
@@ -21,7 +22,7 @@ enum TickRate : std::uint16_t { // Measured in ms per tick
 };
 TickRate tick_rate = TickRate::SixtyTPS;
 
-void worldTick(WorldState& world) {
+void worldTick(WorldState& world, LUT& lut) {
   using Clock = std::chrono::steady_clock;
 
   while (true) {
@@ -29,13 +30,12 @@ void worldTick(WorldState& world) {
     const auto period = std::chrono::milliseconds(
         static_cast<std::uint16_t>(tick_rate));
 
-    world.updateWorld(tick_counter);
-    world.waitForTick(); // wait for state update threads to finish, not just launch
+    world.updateWorld(tick_counter, lut);
+    world.waitForTick();
+    world.swapBuffers();
     ++tick_counter;
 
     if (period.count() != 0) {
-      // Remaining wait = max(0, period - elapsed).
-      // If the tick overran, the deadline is already past: no extra sleep.
       std::this_thread::sleep_until(start + period);
     }
   }
@@ -86,6 +86,7 @@ int main(int argc, char* argv[]){
 
   try {
     WorldState world(n, m, k);
+    LUT lut("lut.bin");
 
     // start world running function
     //    needs to take tick rate, which can be changed by user during runtime, into account. 

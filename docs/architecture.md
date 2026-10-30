@@ -31,18 +31,19 @@ The status of probabilistic transitions should be confirmed separately.
   const-correct operator()(coord) are retained from the teammate integration.
   Extra Cell bits remain reserved.
 - src/state/lut.hpp and lut.cu contain the face types, masks, and packing
-  helpers moved from state. The user's LUT and DeviceLUTView pointer structs
-  remain scaffolding; no loading, allocation, cleanup, or lookup implementation
-  has been added.
+  helpers moved from state. LUT loads a 131072-byte binary table into device
+  memory and owns its allocation. DeviceLUTView carries a read-only device
+  pointer by value and exposes lookup; no separate device view allocation is needed.
 - `src/state/state.cu`: the constructor keeps requested n/m/k and padded
   dimensions n+2/m+2/k+2, creates a padded host image, initializes an AIR interior
   and BLOCK shell, and uploads the same image into both device buffers.
   Allocation sizes and current free VRAM are checked before allocating.
   The host image is initialization data, not a live simulation mirror.
 - `WorldState::updateWorld` schedules tiles using padded dimensions.
-  The kernel reads a CubeTile, packs/unpacks two faces through placeholder LUT
+  The kernel reads a CubeTile, packs/unpacks two faces through material LUT
   calls, and writes the result. BLOCK immobility belongs entirely to the LUT.
-  Both phases cover every visible cell. Buffer role swapping remains unfinished.
+  Both phases cover every visible cell. The caller waits for completion and
+  calls swapBuffers before submitting the next tick.
 - `src/main.cpp`: the CPU ticker submits a tick, waits for stream completion,
   and sleeps until its requested deadline. main does not yet start the ticker.
 - CUDA calls use the teammate's CPU-facing src/extra/check.hpp declaration
@@ -126,12 +127,19 @@ Initialization checks padding addition, allocation multiplication, signed
 coordinate range, and current free GPU memory for both buffers. The CPU image
 uses owned array storage and is released with delete[]. No wraparound is used.
 
-GPU regression: `make -C src run-world_padding` (set CUDA_HOME as needed).
-It checks initialization of both buffers, visible/padded indexing, helper access
-at low/high halos, every interior cell in both phases, partial thread blocks,
-and buffer parity with test-managed swaps. It records memory estimates and
-actual free/used checks in its output. The material reference currently matches
-the identity LUT placeholders; it is not a physics or performance benchmark.
+The existing world_padding test covers visible/padded indexing and tile helper
+access, but its call sites and identity-rule fixture need adaptation to the LUT
+API before that target can run again.
+
+The blank-world regression is `make -C src run-world_blank`, using the actual
+`src/state/la.bin` by default (override with `ARGS=/absolute/path/to/rules.bin`).
+It checks all AIR/BLOCK reference faces, exact LUT upload, both initial GPU
+buffers, and seven ticks on 1x1x1, 3x4x5, 10x14x18, and 100x100x100 worlds.
+Destination interiors are poisoned before each tick to expose missing writes;
+every output cell is compared with an independently constructed blank CPU
+reference. Each tick waits and calls production swapBuffers. RTX 2070
+verification and Compute Sanitizer memcheck passed with zero errors/leaks.
+This establishes blank-world stability, not nonblank material behavior.
 
 ## Thread and tile coordinate mapping
 
@@ -181,14 +189,13 @@ byte addressing and may share a write unit. Revisit packing only when useful.
 `CubeTile` is now a struct containing `Cell cells[8]`, with an eight-byte size
 assertion. The earlier uint64_t representation and pack_cube/unpack_cube helpers
 have been removed from the current source. The transition takes a CubeTile value
-and a face phase and returns a CubeTile; the material LUT calls are unfinished.
+and a face phase and returns a CubeTile using the loaded material LUT.
 
 lut.hpp declares CPU/GPU-callable packFace and unpackFace helpers;
 their runtime definitions are in lut.cu. packFace reads four selected `.elem` fields at shifts 12,8,4,0;
 unpackFace writes the four returned nibbles to the specified output cells.
 stateTransition uses [2,3,0,1] and [6,7,4,5] for x faces, or [3,7,1,5] and
-[2,6,0,4] for z faces, for both packing and unpacking. LUT calls are placeholders,
-so the face path currently returns the input unchanged. next_tile starts as a
+[2,6,0,4] for z faces, for both packing and unpacking. LUT lookups determine the returned face materials. next_tile starts as a
 copy of the input; unpacking replaces only elements and preserves reserved
 state bits at their existing positions. This does not implement age-preserving
 movement, which remains outside alpha. The kernel now scatters the result to the next world buffer.
@@ -260,7 +267,7 @@ Source: [CUDA class and kernel restrictions](https://docs.nvidia.com/cuda/cuda-p
 worldTick remains a CPU loop. TickRate enum values represent integer
 milliseconds per tick; zero means Unlimited. Each iteration snapshots its period,
 records a steady-clock start, submits updateWorld, waits for GPU completion
-through WorldState::waitForTick, and increments the completed tick counter.
+through WorldState::waitForTick, calls swapBuffers, and increments the completed tick counter.
 For nonzero periods it calls std::this_thread::sleep_until(start + period).
 The effective remaining sleep is max(0, period - elapsed), including GPU work.
 
@@ -277,9 +284,10 @@ Use a dedicated simulation stream and explicit rendering handoffs before
 expecting independent GPU simulation/rendering. A separate CPU thread alone
 does not establish GPU independence or pin that thread to a CPU core.
 
-The ticker is still not started by main. Default padded-state upload and
-boundary preservation are implemented; buffer role swapping is still pending.
-Scene loading and material LUT calls also remain unfinished. A future
+The ticker is still not started by main, which currently requests lut.bin
+relative to its working directory. Default padded-state upload, material LUT
+calls, and the post-wait swapBuffers operation are implemented. Scene loading
+remains unfinished. A future
 cross-thread tick-rate setter needs atomic or locked access; the current rate
 is a plain global read by the ticker.
 
