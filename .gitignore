@@ -8,5 +8,7 @@ __pycache__/
 AGENTS.md
 */.cache
 .vscode/*
+src/ishan-build.sh
+src/main
 # Local compilation databases
 compile_commands.json

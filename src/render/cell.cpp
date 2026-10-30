@@ -4,17 +4,21 @@
 
 #include <map>
 #include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <stddef.h>
 #include <glm/gtx/component_wise.hpp>
 #include <stdexcept>
 
-static inline Cell &getAdjCell(CellRef &c, WorldState &ws, Direction d){
-  return ws(c.coords + coord(lutGet(DIRECTION_LUT, d)));
-}
-
 static inline bool isFaceExposed(CellRef &c, WorldState &ws, const CellFace &face){
-  return getAdjCell(c, ws, face.d).elem == Element::AIR;
+  const coord adjacent = c.coords + coord(lutGet(DIRECTION_LUT, face.d));
+  if(adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
+     adjacent.x >= static_cast<int>(ws.n()) ||
+     adjacent.y >= static_cast<int>(ws.m()) ||
+     adjacent.z >= static_cast<int>(ws.k())){
+    return true; // A world boundary is exposed to the outside.
+  }
+  return ws(adjacent).elem == Element::AIR;
 }
 
 // A face is renderable when its cell is not AIR and its neighbor is AIR.
@@ -54,9 +58,28 @@ void CellRenderEntity::updateColor(){
   this->color = lutGet(ELEMENT_COLOR_LUT, this->cell_ref.cell.elem);
 }
 
+void CellRenderEntity::print(){
+  const Cell &cell = this->cell_ref.cell;
+  std::printf("CellRenderEntity at (%d, %d, %d): element=%u state=%u\n",
+              this->cell_ref.coords.x, this->cell_ref.coords.y,
+              this->cell_ref.coords.z, static_cast<unsigned int>(cell.elem),
+              static_cast<unsigned int>(cell.state));
+  std::printf("  color=(%u, %u, %u, %u) mesh=[%u, %u] mask=",
+              static_cast<unsigned int>(this->color.r),
+              static_cast<unsigned int>(this->color.g),
+              static_cast<unsigned int>(this->color.b),
+              static_cast<unsigned int>(this->color.a), this->mesh.first,
+              this->mesh.last);
+  for(bool enabled : this->meshMask){
+    std::putchar(enabled ? '1' : '0');
+  }
+  std::putchar('\n');
+}
+
 const std::array<CellFace, 6> CellRenderEntity::makeFaces(){
   std::array<CellFace, 6> arr;
 
+  // loop through all tris in CUBE_GEOM and assign them around
   for(unsigned int i=0; i<CUBE_GEOM.size(); i++){
     Tri t = CUBE_GEOM.tris[i];
 

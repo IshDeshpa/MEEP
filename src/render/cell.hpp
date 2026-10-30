@@ -17,6 +17,8 @@ using namespace glm;
 struct CellRef{
   Cell &cell;
   coord coords;
+
+  CellRef(Cell &cell, coord c): cell(cell), coords(c){}
 };
 
 struct CellFace{
@@ -24,6 +26,7 @@ struct CellFace{
   TriRef b = std::numeric_limits<unsigned int>().max();
   Direction d; // what side of the cube is it on?
 };
+
 
 class CellRenderEntity : public Entity{
 private:
@@ -40,6 +43,8 @@ public:
 
   unsigned int updateMeshMask(WorldState &ws); // return new count of visible faces
   void updateColor(); // based on cell reference's current elem
+  
+  void print();
 
   static std::unique_ptr<CellRenderEntity> create(CellRef &c, WorldState &ws); // factory function, call with CellRenderEntity.create
 

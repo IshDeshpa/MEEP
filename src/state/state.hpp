@@ -34,7 +34,7 @@ struct Cell {
 struct DeviceWorldView;
 
 struct WorldState {
-  dim n, m, k; // Requested, visible dimensions.
+  glm::ivec3 dimensions; // Requested, visible dimensions.
   std::size_t n_pad, m_pad, k_pad; // One BLOCK cell on each side.
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
@@ -44,6 +44,9 @@ struct WorldState {
   ~WorldState();
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
+  dim n() const { return static_cast<dim>(dimensions.x); }
+  dim m() const { return static_cast<dim>(dimensions.y); }
+  dim k() const { return static_cast<dim>(dimensions.z); }
   // Visible coordinates [0,n) x [0,m) x [0,k), shifted into padded storage.
   size_t index(size_t x, size_t y, size_t z) const;
   // Signed renderer coordinates can address the one-cell BLOCK halo.

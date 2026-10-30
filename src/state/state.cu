@@ -8,6 +8,18 @@
 #include <stdexcept>
 
 namespace {
+glm::ivec3 checkedDimensions(size_t n, size_t m, size_t k) {
+    if (n == 0 || m == 0 || k == 0) {
+        throw std::invalid_argument("World dimensions must be positive");
+    }
+    const auto max_dim =
+        static_cast<size_t>(std::numeric_limits<int>::max()) - 2;
+    if (n > max_dim || m > max_dim || k > max_dim) {
+        throw std::overflow_error("Padded world dimensions exceed ivec3 range");
+    }
+    return glm::ivec3(static_cast<int>(n), static_cast<int>(m), static_cast<int>(k));
+}
+
 __device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase);
 __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
@@ -17,19 +29,12 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
 // WorldState: CPU ownership, initialization, and tick submission.
 
 WorldState::WorldState(size_t n, size_t m, size_t k)
-    : n(n), m(m), k(k), n_pad(0), m_pad(0), k_pad(0),
+    : dimensions(checkedDimensions(n, m, k)), n_pad(0), m_pad(0), k_pad(0),
       world(nullptr), d_curr(nullptr), d_next(nullptr) {
     const auto max = std::numeric_limits<size_t>::max();
-    if (n == 0 || m == 0 || k == 0) {
-        throw std::invalid_argument("World dimensions must be positive");
-    }
-    if (n > max - 2 || m > max - 2 || k > max - 2) {
-        throw std::overflow_error("Padded world dimensions overflow");
-    }
-
-    n_pad = n + 2;
-    m_pad = m + 2;
-    k_pad = k + 2;
+    n_pad = n() + 2;
+    m_pad = m() + 2;
+    k_pad = k() + 2;
     const size_t max_coordinate =
         static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max());
     if (n_pad > max_coordinate || m_pad > max_coordinate ||
@@ -95,9 +100,9 @@ size_t WorldState::index(size_t x, size_t y, size_t z) const {
 
 size_t WorldState::index(coord c) const {
     if (c.x < -1 || c.y < -1 || c.z < -1 ||
-        static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n) ||
-        static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m) ||
-        static_cast<std::ptrdiff_t>(c.z) > static_cast<std::ptrdiff_t>(k)) {
+        static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n()) ||
+        static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m()) ||
+        static_cast<std::ptrdiff_t>(c.z) > static_cast<std::ptrdiff_t>(k())) {
         throw std::out_of_range("Cell coordinate is outside the padded world");
     }
     return deviceView().index(c.x, c.y, c.z);

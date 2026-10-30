@@ -13,20 +13,52 @@
 // 8. Profit
 // 9. Spend profits on frivolous ventures
 
+#include "render/cell.hpp"
 #include "state/state.hpp"
 #include "render/render.hpp"
+
+#include <memory>
+#include <utility>
+#include <vector>
 
 int main(){
   helloWorld();
 
-  // WorldState *w = new WorldState(100, 100, 100);
-  //
-  // // Initialize a few cells
-  // (*w)(0, 0, 0) = {Element::WATER, 0};
-  // (*w)(1, 0, 0) = {Element::EARTH, 0};
-  // (*w)(2, 0, 0) = {Element::LAVA, 0};
-  // (*w)(3, 0, 0) = {Element::AIR, 0};
+  WorldState *w = new WorldState(100, 100, 100);
 
+  // Initialize a few cells
+  (*w)(0, 0, 0) = Cell{Element::WATER, 0};
+  (*w)(1, 0, 0) = Cell{Element::EARTH, 0};
+  (*w)(2, 0, 0) = Cell{Element::LAVA, 0};
+  (*w)(3, 0, 0) = Cell{Element::AIR, 0};
+
+  // Set up CellRefs
+  std::vector<CellRef *> refs = std::vector<CellRef *>();
+  for(unsigned int x=0; x<w->n(); x++){
+    for(unsigned int y=0; y<w->m(); y++){
+      for(unsigned int z=0; z<w->k(); z++){
+        refs.push_back(new CellRef((*w)(x,y,z), {x, y, z}));
+      }
+    }
+  }
+
+  // Set up CellRenderEntity per cell, using the factory function
+  std::vector<std::unique_ptr<CellRenderEntity>> entities = std::vector<std::unique_ptr<CellRenderEntity>>();
+
+  for(CellRef *r : refs){
+    std::unique_ptr<CellRenderEntity> cre = CellRenderEntity::create(*r, *w);
+    if(cre != nullptr) {
+      entities.push_back(std::move(cre));
+      cre->updateMeshMask(*w);
+    }
+  }
+
+  // Print the CellRenderEntities
+  for(std::unique_ptr<CellRenderEntity> &cre : entities){
+    cre->print();
+  }
+
+  // Transfer state to GPU (d_curr)
+  w->transferWorld();
   
-
 }
