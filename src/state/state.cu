@@ -6,35 +6,30 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <utility>
 
-namespace {
-glm::ivec3 checkedDimensions(size_t n, size_t m, size_t k) {
-    if (n == 0 || m == 0 || k == 0) {
-        throw std::invalid_argument("World dimensions must be positive");
-    }
-    const auto max_dim =
-        static_cast<size_t>(std::numeric_limits<int>::max()) - 2;
-    if (n > max_dim || m > max_dim || k > max_dim) {
-        throw std::overflow_error("Padded world dimensions exceed ivec3 range");
-    }
-    return glm::ivec3(static_cast<int>(n), static_cast<int>(m), static_cast<int>(k));
-}
-
-__device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase);
-__global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
+__device__ static CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase);
+__global__ static void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
                            size_t tile_phase, size_t face_phase);
-} // namespace
 
 // WorldState: CPU ownership, initialization, and tick submission.
 
+DeviceWorldView WorldState::device_view{};
+
 WorldState::WorldState(size_t n, size_t m, size_t k)
-    : dimensions(checkedDimensions(n, m, k)), n_pad(0), m_pad(0), k_pad(0),
+    : n(n), m(m), k(k), n_pad(0), m_pad(0), k_pad(0),
       world(nullptr), d_curr(nullptr), d_next(nullptr) {
     const auto max = std::numeric_limits<size_t>::max();
-    n_pad = n() + 2;
-    m_pad = m() + 2;
-    k_pad = k() + 2;
+    if (n == 0 || m == 0 || k == 0) {
+        throw std::invalid_argument("World dimensions must be positive");
+    }
+    if (n > max - 2 || m > max - 2 || k > max - 2) {
+        throw std::overflow_error("Padded world dimensions overflow");
+    }
+    n_pad = n + 2;
+    m_pad = m + 2;
+    k_pad = k + 2;
     const size_t max_coordinate =
         static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max());
     if (n_pad > max_coordinate || m_pad > max_coordinate ||
@@ -56,7 +51,7 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
             "Insufficient free GPU memory for both padded world buffers");
     }
 
-    auto initial = std::make_unique<Cell[]>(cell_count);
+    std::unique_ptr<Cell[]> initial(new Cell[cell_count]);
     for (size_t x = 0; x < n_pad; ++x) {
         for (size_t y = 0; y < m_pad; ++y) {
             for (size_t z = 0; z < k_pad; ++z) {
@@ -84,35 +79,37 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
         throw;
     }
     world = initial.release();
+    device_view = {d_curr, d_next, m_pad, k_pad};
 }
 
 WorldState::~WorldState() {
+    if (device_view.curr == d_curr) device_view = {};
     delete[] world;
     cudaFree(d_curr);
     cudaFree(d_next);
 }
 
 size_t WorldState::index(size_t x, size_t y, size_t z) const {
-    return deviceView().index(static_cast<std::ptrdiff_t>(x),
-                               static_cast<std::ptrdiff_t>(y),
-                               static_cast<std::ptrdiff_t>(z));
+    return device_view.index(static_cast<std::ptrdiff_t>(x),
+                              static_cast<std::ptrdiff_t>(y),
+                              static_cast<std::ptrdiff_t>(z));
 }
 
-size_t WorldState::index(coord c) const {
+size_t WorldState::index(worldcoord c) const {
     if (c.x < -1 || c.y < -1 || c.z < -1 ||
-        static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n()) ||
-        static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m()) ||
-        static_cast<std::ptrdiff_t>(c.z) > static_cast<std::ptrdiff_t>(k())) {
+        static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n) ||
+        static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m) ||
+        static_cast<std::ptrdiff_t>(c.z) > static_cast<std::ptrdiff_t>(k)) {
         throw std::out_of_range("Cell coordinate is outside the padded world");
     }
-    return deviceView().index(c.x, c.y, c.z);
+    return device_view.index(c.x, c.y, c.z);
 }
 
-Cell& WorldState::operator()(coord c) {
+Cell& WorldState::operator()(worldcoord c) {
     return world[index(c)];
 }
 
-const Cell& WorldState::operator()(coord c) const {
+const Cell& WorldState::operator()(worldcoord c) const {
     return world[index(c)];
 }
 
@@ -120,8 +117,45 @@ size_t WorldState::paddedIndex(size_t x, size_t y, size_t z) const {
     return z + k_pad * (y + m_pad * x);
 }
 
-DeviceWorldView WorldState::deviceView() const {
-    return {d_curr, d_next, m_pad, k_pad};
+void WorldState::swapBuffers() {
+    std::swap(d_curr, d_next);
+    device_view = {d_curr, d_next, m_pad, k_pad};
+}
+
+// DeviceWorldView: padded indexing and tile access.
+__host__ __device__
+std::size_t DeviceWorldView::index(std::size_t x, std::size_t y,
+                                  std::size_t z) const noexcept {
+    return static_cast<std::size_t>(z + 1) +
+           k_pad * (static_cast<std::size_t>(y + 1) +
+                    m_pad * static_cast<std::size_t>(x + 1));
+}
+
+__host__ __device__
+CubeTile DeviceWorldView::readTile(std::size_t x, std::size_t y,
+                                   std::size_t z) const noexcept {
+    CubeTile tile;
+    const auto base = index(x, y, z);
+    for (unsigned c = 0; c < 8; ++c) {
+        const std::size_t dx = (c >> 2) & 1;
+        const std::size_t dy = (c >> 1) & 1;
+        const std::size_t dz = c & 1;
+        tile.cells[c] = curr[base + m_pad * k_pad * dx + k_pad * dy + dz];
+    }
+    return tile;
+}
+
+__host__ __device__
+void DeviceWorldView::writeTile(std::size_t x, std::size_t y,
+                                std::size_t z,
+                                const CubeTile& tile) const noexcept {
+    const auto base = index(x, y, z);
+    for (unsigned c = 0; c < 8; ++c) {
+        const std::size_t dx = (c >> 2) & 1;
+        const std::size_t dy = (c >> 1) & 1;
+        const std::size_t dz = c & 1;
+        next[base + m_pad * k_pad * dx + k_pad * dy + dz] = tile.cells[c];
+    }
 }
 
 void WorldState::updateWorld(std::size_t tick, LUT& lut) {
@@ -137,7 +171,7 @@ void WorldState::updateWorld(std::size_t tick, LUT& lut) {
 
     const size_t blocks = 1 + (tile_count - 1) / THREADS_PER_BLOCK;
     updateTile<<<blocks, THREADS_PER_BLOCK>>>(
-        deviceView(), lut.deviceView(), tiles_y, tiles_z, tile_count,
+        device_view, lut.deviceView(), tiles_y, tiles_z, tile_count,
         tile_phase, face_phase);
     CUDA_CHECK(cudaGetLastError()); // Checks submission, not GPU completion.
 }
@@ -148,55 +182,9 @@ void WorldState::waitForTick() {
     CUDA_CHECK(cudaStreamSynchronize(nullptr));
 }
 
-void WorldState::swapBuffers() {
-    std::swap(d_curr, d_next);
-}
-
-
-// DeviceWorldView: padded indexing and tile access.
-// These definitions share a translation unit with updateTile so optimization
-// can inline the helpers without putting their bodies in the header.
-
-__host__ __device__
-std::size_t DeviceWorldView::index(std::ptrdiff_t x, std::ptrdiff_t y,
-                                  std::ptrdiff_t z) const noexcept {
-    return static_cast<std::size_t>(z + 1) +
-           k_pad * (static_cast<std::size_t>(y + 1) +
-                       m_pad * static_cast<std::size_t>(x + 1));
-}
-
-__host__ __device__
-CubeTile DeviceWorldView::readTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                                    std::ptrdiff_t z) const noexcept {
-    CubeTile tile;
-    const auto base = index(x, y, z);
-    for (unsigned c = 0; c < 8; ++c) {
-        const std::size_t dx = (c >> 2) & 1;
-        const std::size_t dy = (c >> 1) & 1;
-        const std::size_t dz = c & 1;
-        tile.cells[c] = curr[base + m_pad * k_pad * dx + k_pad * dy + dz];
-    }
-    return tile;
-}
-
-__host__ __device__
-void DeviceWorldView::writeTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                                 std::ptrdiff_t z,
-                                 const CubeTile& tile) const noexcept {
-    const auto base = index(x, y, z);
-    for (unsigned c = 0; c < 8; ++c) {
-        const std::size_t dx = (c >> 2) & 1;
-        const std::size_t dy = (c >> 1) & 1;
-        const std::size_t dz = c & 1;
-        next[base + m_pad * k_pad * dx + k_pad * dy + dz] = tile.cells[c];
-    }
-}
-
 // GPU update kernel and state transition.
 
-namespace {
-
-__global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
+__global__ static void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
                            size_t tile_phase, size_t face_phase) {
     const size_t tile_id = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
@@ -222,7 +210,7 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
 }
 
 
-__device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase) {
+__device__ static CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase) {
     CubeTile next_tile = tile; // Keep reserved state bits initialized.
 #if FACE_TRANSITION
     FaceETile face_0, face_1;
@@ -251,5 +239,3 @@ __device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t fac
 #endif
     return next_tile;
 }
-
-} // namespace

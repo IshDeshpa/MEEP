@@ -1,4 +1,8 @@
 #pragma once
+#include "render/cell.hpp"
+#include "render/primitives.hpp"
 
-// CUDA functions to expose
-void helloWorld(); // to test
+// The world's rendering engine
+class Renderer{
+  Renderer();
+};

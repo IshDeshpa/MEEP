@@ -68,6 +68,11 @@ void checkWorld(size_t n, size_t m, size_t k, const std::string& file_path,
 
     LUT lut(file_path.c_str());
     WorldState world(n, m, k);
+    require(world.device_view.curr == world.d_curr &&
+                world.device_view.next == world.d_next &&
+                world.device_view.m_pad == world.m_pad &&
+                world.device_view.k_pad == world.k_pad,
+            "Stored device view was not initialized");
     std::vector<FaceETile> uploaded(rules.size());
     CUDA_CHECK(cudaMemcpy(uploaded.data(), lut.deviceView().lut, FACE_LUT_SIZE,
                           cudaMemcpyDeviceToHost));
@@ -103,6 +108,9 @@ void checkWorld(size_t n, size_t m, size_t k, const std::string& file_path,
         checkBuffer(world.d_curr, expected, "Input after tick " + std::to_string(tick));
         // Exercise the production swap after GPU completion.
         world.swapBuffers();
+        require(world.device_view.curr == world.d_curr &&
+                    world.device_view.next == world.d_next,
+                "Stored device view did not follow buffer swap");
         require((world.d_curr == original_current) == ((tick & 1) != 0),
                 "Incorrect buffer parity");
     }

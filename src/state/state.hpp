@@ -9,7 +9,7 @@
 #include <glm/vec3.hpp>
 
 using dim = std::size_t;
-using coord = glm::ivec3;
+using worldcoord = glm::ivec3;
 
 // TODO: reserve the highest material IDs for debug elements.
 enum class Element : std::uint8_t {
@@ -34,31 +34,28 @@ struct Cell {
 struct DeviceWorldView;
 
 struct WorldState {
-  glm::ivec3 dimensions; // Requested, visible dimensions.
+  dim n, m, k; // Requested, visible dimensions.
   std::size_t n_pad, m_pad, k_pad; // One BLOCK cell on each side.
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
-  Cell* d_curr;
-  Cell* d_next;
+  Cell* d_curr; // GPU pointer
+  Cell* d_next; // GPU pointer
 
   WorldState(size_t n, size_t m, size_t k);
   ~WorldState();
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
-  dim n() const { return static_cast<dim>(dimensions.x); }
-  dim m() const { return static_cast<dim>(dimensions.y); }
-  dim k() const { return static_cast<dim>(dimensions.z); }
   // Visible coordinates [0,n) x [0,m) x [0,k), shifted into padded storage.
   size_t index(size_t x, size_t y, size_t z) const;
   // Signed renderer coordinates can address the one-cell BLOCK halo.
-  size_t index(coord c) const;
+  size_t index(worldcoord c) const;
   // These access the CPU initialization/snapshot image, not live GPU memory.
-  Cell& operator()(coord c);
-  const Cell& operator()(coord c) const;
+  Cell& operator()(worldcoord c);
+  const Cell& operator()(worldcoord c) const;
   // Raw padded coordinates; z is contiguous, with strides m_pad*k_pad,
   // k_pad, 1. Rendering should iterate visible dimensions and use index().
   size_t paddedIndex(size_t x, size_t y, size_t z) const;
-  // Capture the current device-buffer roles and padded strides for a launch.
-  DeviceWorldView deviceView() const;
+  // Shared view of the most recently constructed or swapped world.
+  static DeviceWorldView device_view;
   void updateWorld(std::size_t tick, LUT& lut);
   void waitForTick(); // Wait for the current simulation stream to finish.
   void swapBuffers();
@@ -95,19 +92,19 @@ struct DeviceWorldView {
   Cell* next;
   std::size_t m_pad, k_pad;
 
-  // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
+  // Visible (0,0,0) is padded (1,1,1); size_t(-1) denotes the lower halo.
   MEEP_HOST_DEVICE
-  std::size_t index(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
+  std::size_t index(std::size_t x, std::size_t y,
+                    std::size_t z) const noexcept;
 
-  // Caller guarantees the full tile fits, including origins at -1.
+  // Caller guarantees the full tile fits, including origins at size_t(-1).
   MEEP_HOST_DEVICE
-  CubeTile readTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
+  CubeTile readTile(std::size_t x, std::size_t y,
+                    std::size_t z) const noexcept;
 
   MEEP_HOST_DEVICE
-  void writeTile(std::ptrdiff_t x, std::ptrdiff_t y, std::ptrdiff_t z,
-                  const CubeTile& tile) const noexcept;
+  void writeTile(std::size_t x, std::size_t y, std::size_t z,
+                 const CubeTile& tile) const noexcept;
 };
 static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
 

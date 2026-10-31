@@ -5,12 +5,11 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <string>
 
+#include "extra/lut.hpp"
 #include "state/state.hpp"
 
-using namespace glm;
-
-using Vertex=dvec3; // might change later if normals/other are added. heterogeneous coords
-using Tri=uvec3; // indices pointing to vertices
+using Vertex=glm::dvec3; // might change later if normals/other are added. heterogeneous coords
+using Tri=glm::uvec3; // indices pointing to vertices
 
 using VertRef=Tri::value_type;
 using TriRef=unsigned int; // index pointing to a triangle (use instead of a Tri&, since those refs may be invalidated since tris are in vectors)
@@ -25,22 +24,20 @@ enum class Direction : uint8_t{
   Z_MINUS,
   COUNT
 };
-
-constexpr vec3 DIRECTION_LUT[] = {
-  vec3(1, 0, 0),
-  vec3(-1, 0, 0),
-  vec3(0, 1, 0),
-  vec3(0, -1, 0),
-  vec3(0, 0, 1),
-  vec3(0, 0, -1),
-};
-static_assert(static_cast<int>(Direction::COUNT) == std::size(DIRECTION_LUT));
+constexpr EnumLUT<Direction, glm::vec3> DIRECTION_LUT({{
+  glm::vec3(1, 0, 0),
+  glm::vec3(-1, 0, 0),
+  glm::vec3(0, 1, 0),
+  glm::vec3(0, -1, 0),
+  glm::vec3(0, 0, 1),
+  glm::vec3(0, 0, -1),
+}});
 
 struct Color {
   uint8_t r; uint8_t g; uint8_t b; uint8_t a;
 };
 
-constexpr Color ELEMENT_COLOR_LUT[] = {
+constexpr EnumLUT<Element, Color> ELEMENT_COLOR_LUT({{
     {  0,   0,   0,   0}, // AIR
     { 30, 144, 255, 255}, // WATER
     {139,  90,  43, 255}, // EARTH
@@ -48,14 +45,7 @@ constexpr Color ELEMENT_COLOR_LUT[] = {
     {100, 100, 110, 255}, // BLOCK
     {255, 215,   0, 255}, // EMITTER
     { 40,  10,  60, 255}, // VOID
-};
-static_assert(static_cast<int>(Element::COUNT) == std::size(ELEMENT_COLOR_LUT));
-
-template <typename K, typename V>
-    requires std::is_enum_v<K>
-constexpr V lutGet(const V* lut, K key) noexcept {
-    return lut[static_cast<std::size_t>(key)];
-}
+}});
 
 // A set of triangles and vertices, meant to be passed to the GPU as a batch
 struct Geometry{
@@ -113,39 +103,27 @@ struct Geometry{
   std::size_t size() const {return tris.size();}
 };
 
-// A collection of triangles in a geometry
-// Refers to a range of triangles in some geometry reference
-struct Mesh{
-  const Geometry &geom;
-  TriRef first; // inclusive
-  TriRef last; // inclusive
-
-  Mesh(const Geometry &g, TriRef f, TriRef l): geom(g), first(f), last(l){}
-};
-
-// Refers to some mesh to identify which triangles are part of this entity
-// This is so that multiple entities can share meshes
-// Has its own translation/rotation
+// References an entire geometry shared by entities, with its own transform.
 struct Entity{
-  const Mesh &mesh;
-  std::vector<bool> meshMask; // mask out specific tris in the mesh; indexed by TriRef
+  const Geometry &geom;
+  std::vector<bool> triangleMask; // mask out geometry triangles; indexed by TriRef
 
   Color color;
-  dmat4 transform;
+  glm::dmat4 transform;
 
-  Entity(const Mesh &m, Color c, dmat4 t): mesh(m), color(c), transform(t){}
-  Entity(const Mesh &m, Color c, dvec3 translation, dvec3 rot_euler): mesh(m), color(c), transform(toTransform(translation, rot_euler)){}
+  Entity(const Geometry &g, Color c, glm::dmat4 t): geom(g), color(c), transform(t){}
+  Entity(const Geometry &g, Color c, glm::dvec3 translation, glm::dvec3 rot_euler): geom(g), color(c), transform(toTransform(translation, rot_euler)){}
 
-  dmat4 toTransform(dvec3 translation, dvec3 rot_euler) {
-      return translate(dmat4(1.0), translation)
-          * eulerAngleXYZ(rot_euler.x, rot_euler.y, rot_euler.z);
+  glm::dmat4 toTransform(glm::dvec3 translation, glm::dvec3 rot_euler) {
+      return glm::translate(glm::dmat4(1.0), translation)
+          * glm::eulerAngleXYZ(rot_euler.x, rot_euler.y, rot_euler.z);
   }
 };
 
 // mainly for camera, and perhaps for other objects that have a look direction and position
 // (thinking light source maybe?)
 struct Pose {
-  dvec4 pos = dvec4(0, 0, 0, 1); // position
-  dvec4 look = dvec4(0, 0, -1, 0); // look direction
+  glm::dvec4 pos = glm::dvec4(0, 0, 0, 1); // position
+  glm::dvec4 look = glm::dvec4(0, 0, -1, 0); // look direction
 };
 

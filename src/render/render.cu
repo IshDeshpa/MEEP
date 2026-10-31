@@ -1,13 +1,6 @@
 #include "render/render.hpp"
-#include <stdio.h>
 
-__global__ void helloWorldKernel(){
-  printf("Hello World!\n");
+Renderer::Renderer(){
+  
 }
-
-void helloWorld(){
-  helloWorldKernel<<<1,1>>>();
-  cudaDeviceSynchronize();
-}
-
 

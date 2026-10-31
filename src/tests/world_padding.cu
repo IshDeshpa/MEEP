@@ -57,7 +57,7 @@ void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
 
         CUDA_CHECK(cudaMemcpy(world.d_next, source.data(), bytes,
                               cudaMemcpyHostToDevice));
-        exercise_tile_view<<<1, 1>>>(world.device_view(),
+        exercise_tile_view<<<1, 1>>>(world.device_view,
                                      origin[0], origin[1], origin[2]);
         CUDA_CHECK(cudaGetLastError());
         world.wait_for_tick();

@@ -13,52 +13,64 @@
 // 8. Profit
 // 9. Spend profits on frivolous ventures
 
-#include "render/cell.hpp"
-#include "state/state.hpp"
-#include "render/render.hpp"
+#include <cuda_runtime_api.h>
 
+#include "extra/check.hpp"
+#include "render/cell.hpp"
+#include "render/render.hpp"
+#include "state/state.hpp"
+
+#include <cstdio>
 #include <memory>
-#include <utility>
 #include <vector>
 
-int main(){
-  helloWorld();
+int main() {
+    helloWorld();
 
-  WorldState *w = new WorldState(100, 100, 100);
+    WorldState world(100, 100, 100);
 
-  // Initialize a few cells
-  (*w)(0, 0, 0) = Cell{Element::WATER, 0};
-  (*w)(1, 0, 0) = Cell{Element::EARTH, 0};
-  (*w)(2, 0, 0) = Cell{Element::LAVA, 0};
-  (*w)(3, 0, 0) = Cell{Element::AIR, 0};
+    // Seed a few visible cells in the padded CPU initialization image.
+    world(worldcoord(0, 0, 0)) = Cell{Element::WATER, 0};
+    world(worldcoord(1, 0, 0)) = Cell{Element::EARTH, 0};
+    world(worldcoord(2, 0, 0)) = Cell{Element::LAVA, 0};
 
-  // Set up CellRefs
-  std::vector<CellRef *> refs = std::vector<CellRef *>();
-  for(unsigned int x=0; x<w->n(); x++){
-    for(unsigned int y=0; y<w->m(); y++){
-      for(unsigned int z=0; z<w->k(); z++){
-        refs.push_back(new CellRef((*w)(x,y,z), {x, y, z}));
-      }
+    // Upload the CPU image, then obtain the renderer's snapshot through the
+    // current GPU buffer described by DeviceWorldView.
+    const std::size_t padded_cell_count =
+        world.n_pad * world.m_pad * world.k_pad;
+    const std::size_t padded_bytes = padded_cell_count * sizeof(Cell);
+    CUDA_CHECK(cudaMemcpy(world.d_curr, world.world, padded_bytes, cudaMemcpyHostToDevice));
+
+    const DeviceWorldView device_world = world.device_view;
+    std::vector<Cell> snapshot(padded_cell_count);
+    CUDA_CHECK(cudaMemcpy(snapshot.data(), device_world.curr, padded_bytes, cudaMemcpyDeviceToHost));
+
+    // CellRenderEntity holds references, so keep the snapshot and refs alive
+    // until all entities have been printed.
+    std::vector<CellRef> refs;
+    for (dim x = 0; x < world.n; ++x) {
+        for (dim y = 0; y < world.m; ++y) {
+            for (dim z = 0; z < world.k; ++z) {
+                const worldcoord coords(static_cast<int>(x), static_cast<int>(y),
+                                   static_cast<int>(z));
+                Cell& cell = snapshot[device_world.index(x, y, z)];
+                if (cell.elem != Element::AIR) {
+                    refs.emplace_back(cell, coords);
+                }
+            }
+        }
     }
-  }
 
-  // Set up CellRenderEntity per cell, using the factory function
-  std::vector<std::unique_ptr<CellRenderEntity>> entities = std::vector<std::unique_ptr<CellRenderEntity>>();
-
-  for(CellRef *r : refs){
-    std::unique_ptr<CellRenderEntity> cre = CellRenderEntity::create(*r, *w);
-    if(cre != nullptr) {
-      entities.push_back(std::move(cre));
-      cre->updateMeshMask(*w);
+    std::vector<std::unique_ptr<CellRenderEntity>> entities;
+    for (CellRef& ref : refs) {
+        std::unique_ptr<CellRenderEntity> entity = CellRenderEntity::create(ref, world);
+        if (entity) {
+            entity->updateTriangleMask(world);
+            entities.push_back(std::move(entity));
+        }
     }
-  }
 
-  // Print the CellRenderEntities
-  for(std::unique_ptr<CellRenderEntity> &cre : entities){
-    cre->print();
-  }
-
-  // Transfer state to GPU (d_curr)
-  w->transferWorld();
-  
+    for (const auto& entity : entities) {
+        entity->print();
+    }
 }

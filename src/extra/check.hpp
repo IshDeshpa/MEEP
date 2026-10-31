@@ -1,10 +1,8 @@
 #pragma once
 
-#include <string>
-
 namespace meep {
   // Host-side check only: this does not wait for asynchronous GPU work.
-  void cuda_check(int status, std::string call, std::string file, int line);
+  void cuda_check(int status, const char* call, const char* file, int line);
 }
 
 // Evaluate call once and retain the caller's source location.

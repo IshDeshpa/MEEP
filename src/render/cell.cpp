@@ -1,83 +1,14 @@
 #include "render/cell.hpp"
-#include "render/primitives.hpp"
-#include "state/state.hpp"
-
-#include <map>
-#include <algorithm>
-#include <cstdio>
-#include <memory>
-#include <stddef.h>
+#include <glm/glm.hpp>
 #include <glm/gtx/component_wise.hpp>
-#include <stdexcept>
 
-static inline bool isFaceExposed(CellRef &c, WorldState &ws, const CellFace &face){
-  const coord adjacent = c.coords + coord(lutGet(DIRECTION_LUT, face.d));
-  if(adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
-     adjacent.x >= static_cast<int>(ws.n()) ||
-     adjacent.y >= static_cast<int>(ws.m()) ||
-     adjacent.z >= static_cast<int>(ws.k())){
-    return true; // A world boundary is exposed to the outside.
-  }
-  return ws(adjacent).elem == Element::AIR;
+HostCube &HostCube::instance(){
+  static HostCube cube;
+  return cube;
 }
 
-// A face is renderable when its cell is not AIR and its neighbor is AIR.
-static inline bool isRenderable(CellRef &c, WorldState &ws, const CellFace &face){
-  return c.cell.elem != Element::AIR && isFaceExposed(c, ws, face);
-}
-
-static inline bool isAnyFaceRenderable(CellRef &c, WorldState &ws){
-  for(const CellFace &face : CellRenderEntity::CUBE_FACES){
-    if(isRenderable(c, ws, face)) return true;
-  }
-  return false;
-}
-
-// Generate CellRenderEntity only for those cells that could possibly
-// be rendered (track state of any non-obstructed cell)
-std::unique_ptr<CellRenderEntity> CellRenderEntity::create(CellRef &c, WorldState &ws){
-  if(!isAnyFaceRenderable(c, ws)) return nullptr; // consider non-renderable cells as obstructed
-
-  return std::unique_ptr<CellRenderEntity>(new CellRenderEntity(c));
-}
-
-unsigned int CellRenderEntity::updateMeshMask(WorldState &ws){
-  meshMask.reserve(mesh.last - mesh.first + 1);
-
-  for(const CellFace &face : CUBE_FACES){
-    if(isRenderable(this->cell_ref, ws, face)){
-      this->meshMask[face.a] = true;
-      this->meshMask[face.b] = true;
-    }
-  }
-
-  return std::count(this->meshMask.begin(), this->meshMask.end(), true);
-}
-
-void CellRenderEntity::updateColor(){
-  this->color = lutGet(ELEMENT_COLOR_LUT, this->cell_ref.cell.elem);
-}
-
-void CellRenderEntity::print(){
-  const Cell &cell = this->cell_ref.cell;
-  std::printf("CellRenderEntity at (%d, %d, %d): element=%u state=%u\n",
-              this->cell_ref.coords.x, this->cell_ref.coords.y,
-              this->cell_ref.coords.z, static_cast<unsigned int>(cell.elem),
-              static_cast<unsigned int>(cell.state));
-  std::printf("  color=(%u, %u, %u, %u) mesh=[%u, %u] mask=",
-              static_cast<unsigned int>(this->color.r),
-              static_cast<unsigned int>(this->color.g),
-              static_cast<unsigned int>(this->color.b),
-              static_cast<unsigned int>(this->color.a), this->mesh.first,
-              this->mesh.last);
-  for(bool enabled : this->meshMask){
-    std::putchar(enabled ? '1' : '0');
-  }
-  std::putchar('\n');
-}
-
-const std::array<CellFace, 6> CellRenderEntity::makeFaces(){
-  std::array<CellFace, 6> arr;
+const std::array<CubeFace, 6> HostCube::makeFaces() const{
+  std::array<CubeFace, 6> arr;
 
   // loop through all tris in CUBE_GEOM and assign them around
   for(unsigned int i=0; i<CUBE_GEOM.size(); i++){
@@ -85,15 +16,15 @@ const std::array<CellFace, 6> CellRenderEntity::makeFaces(){
 
     // What direction is the triangle facing?
     // Winding determines facing; CCW is dir it faces
-    dvec3 v0, v1, v2; 
+    glm::dvec3 v0, v1, v2; 
     v0 = CUBE_GEOM.verts[t.x];
     v1 = CUBE_GEOM.verts[t.y];
     v2 = CUBE_GEOM.verts[t.z];
 
-    dvec3 normal = normalize(cross(v1 - v0, v2 - v0)); // this points in the direction we're facing
-    if(compAdd(abs(normal)) != 1) throw std::runtime_error("Invalid normal");
-    
-    ivec3 normal_int = static_cast<ivec3>(normal);
+    glm::dvec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0)); // this points in the direction we're facing
+    if(glm::compAdd(glm::abs(normal)) != 1) throw std::runtime_error("Invalid normal");
+
+    glm::ivec3 normal_int = static_cast<glm::ivec3>(normal);
     int key = normal_int.x + 2 * normal_int.y + 3 * normal_int.z;
     Direction d;
     switch(key){
@@ -110,7 +41,7 @@ const std::array<CellFace, 6> CellRenderEntity::makeFaces(){
     if(arr[static_cast<unsigned int>(d)].a == imax){
       arr[static_cast<unsigned int>(d)].a = static_cast<TriRef>(i);
     } else if(arr[static_cast<unsigned int>(d)].b == imax){
-      arr[static_cast<unsigned int>(d)].a = static_cast<TriRef>(i);
+      arr[static_cast<unsigned int>(d)].b = static_cast<TriRef>(i);
     } else {
       throw std::runtime_error("More than two triangles for a face?");
     }
@@ -119,3 +50,92 @@ const std::array<CellFace, 6> CellRenderEntity::makeFaces(){
 
   return arr;
 }
+
+
+
+
+
+
+// #include "render/primitives.hpp"
+// #include "state/state.hpp"
+// #include <map>
+// #include <algorithm>
+// #include <cstdio>
+// #include <memory>
+// #include <stddef.h>
+// #include <glm/gtx/component_wise.hpp>
+// #include <stdexcept>
+//
+// static inline bool isFaceExposed(CellRef &c, WorldState &ws, const CellFace &face){
+//   const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[face.d]);
+//   if(adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
+//      adjacent.x >= static_cast<int>(ws.n) ||
+//      adjacent.y >= static_cast<int>(ws.m) ||
+//      adjacent.z >= static_cast<int>(ws.k)){
+//     return true; // A world boundary is exposed to the outside.
+//   }
+//   return ws(adjacent).elem == Element::AIR;
+// }
+//
+//
+// unsigned int CellRenderEntity::updateTriangleMask(WorldState &ws){
+//   triangleMask.resize(geom.size());
+//
+//   const auto mark_triangle = [this](TriRef triangle) {
+//     if(triangle >= geom.size()){
+//       throw std::out_of_range("Cell face triangle is outside its geometry");
+//     }
+//     triangleMask[triangle] = true;
+//   };
+//
+//   for(const CellFace &face : CUBE_FACES){
+//     if(isRenderable(this->cell_ref, ws, face)){
+//       mark_triangle(face.a);
+//       mark_triangle(face.b);
+//     }
+//   }
+//
+//   return std::count(this->triangleMask.begin(), this->triangleMask.end(), true);
+// }
+//
+// void CellRenderEntity::updateColor(){
+//   this->color = ELEMENT_COLOR_LUT[this->cell_ref.cell.elem];
+// }
+//
+// // Written by claude
+// void CellRenderEntity::print(){
+//   const Cell &cell = this->cell_ref.cell;
+//   std::printf("CellRenderEntity at (%d, %d, %d): element=%u state=%u\n",
+//               this->cell_ref.coords.x, this->cell_ref.coords.y,
+//               this->cell_ref.coords.z, static_cast<unsigned int>(cell.elem),
+//               static_cast<unsigned int>(cell.state));
+//   std::printf("  geometry=%p\n",
+//               static_cast<const void *>(&this->geom));
+//   std::printf("  color=(%u, %u, %u, %u) triangles=%zu mask=",
+//               static_cast<unsigned int>(this->color.r),
+//               static_cast<unsigned int>(this->color.g),
+//               static_cast<unsigned int>(this->color.b),
+//               static_cast<unsigned int>(this->color.a), this->geom.size());
+//   for(bool enabled : this->triangleMask){
+//     std::putchar(enabled ? '1' : '0');
+//   }
+//   std::printf("\n  visible_faces=");
+//   static constexpr const char *direction_names[] = {
+//       "X_PLUS", "X_MINUS", "Y_PLUS", "Y_MINUS", "Z_PLUS", "Z_MINUS"};
+//   bool first_face = true;
+//   for(const CellFace &face : CUBE_FACES){
+//     const auto is_enabled = [this](TriRef triangle){
+//       return triangle < this->geom.size() &&
+//              triangle < this->triangleMask.size() &&
+//              this->triangleMask[triangle];
+//     };
+//     if(is_enabled(face.a) || is_enabled(face.b)){
+//       if(!first_face) std::printf(", ");
+//       std::printf("%s", direction_names[static_cast<unsigned int>(face.d)]);
+//       first_face = false;
+//     }
+//   }
+//   if(first_face) std::printf("none");
+//   std::putchar('\n');
+// }
+//

@@ -6,12 +6,12 @@
 
 namespace meep {
 
-void cuda_check(int status, std::string call, std::string file, int line) {
+void cuda_check(int status, const char* call, const char* file, int line) {
     if (status == cudaSuccess)
         return;
 
     throw std::runtime_error(
-        file + ":" + std::to_string(line) +
+        std::string(file) + ":" + std::to_string(line) +
         ": CUDA call " + call + " failed: " +
         cudaGetErrorName(static_cast<cudaError_t>(status)) + " (" +
         cudaGetErrorString(static_cast<cudaError_t>(status)) + ")");

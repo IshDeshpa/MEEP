@@ -57,6 +57,9 @@ CUDA_ARCH ?= sm_75
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
   $(CUDA_HOME)/include/cuda_runtime.h $(CUDA_HOME)/targets/x86_64-linux/include/cuda_runtime.h)))
+ifneq ($(CUDA_INC),)
+CXXFLAGS += -I$(CUDA_INC)
+endif
 # Device linking supports out-of-line helpers; LTO enables cross-file inlining.
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
 ifneq ($(SANITIZER),)
