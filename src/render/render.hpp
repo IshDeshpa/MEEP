@@ -1,4 +1,4 @@
 #pragma once
 
 // CUDA functions to expose
-void helloWorld();
+void helloWorld(); // to test

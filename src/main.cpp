@@ -1,33 +1,50 @@
 #include "state/state.hpp"
+#include "state/lut.hpp"
 
 #include <charconv>
 #include <exception>
 #include <iostream>
 #include <string_view>
 #include <chrono>
+#include <thread>
 
-FaceETileLUT et_lut; // Tiles should be declared as __constant__ 
 std::size_t tick_counter = 0;
 
 // TODO: variable tick rate
-enum TickRate : std::uint16_t{
-//   Unlimited = 0,
-
+enum TickRate : std::uint16_t { // Measured in ms per tick
+  OneTPS = 1000,
+  TwoTPS = 500,
+  FiveTPS = 200,
+  TenTPS = 100,
+  ThirtyTPS = 34,
+  SixtyTPS = 17,
+  Unlimited = 0,
 };
+TickRate tick_rate = TickRate::SixtyTPS;
 
-void world_tick(WorldState& world) {
+void worldTick(WorldState& world, LUT& lut) {
+  using Clock = std::chrono::steady_clock;
+
   while (true) {
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    //call the CPU state_tick() function that dispatches the GPU tick function that dispatches all tiles
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now(); 
-    //wait depending on time taken and tick rate
+    const auto start = Clock::now();
+    const auto period = std::chrono::milliseconds(
+        static_cast<std::uint16_t>(tick_rate));
+
+    world.updateWorld(tick_counter, lut);
+    world.waitForTick();
+    world.swapBuffers();
+    ++tick_counter;
+
+    if (period.count() != 0) {
+      std::this_thread::sleep_until(start + period);
+    }
   }
 }
 
 
 
 int main(int argc, char* argv[]){
-  dim_t n = 100, m = 100, k = 100;
+  dim n = 100, m = 100, k = 100;
 
   for (int i = 1; i < argc; ++i) {
     std::string_view option = argv[i];
@@ -35,11 +52,12 @@ int main(int argc, char* argv[]){
       std::cout << "Usage: " << argv[0]
                 << " [-n N] [-m M] [-k K]\n"
                 << "Aliases: -x for -n, -y for -m, -z for -k.\n"
-                << "Dimensions must be positive integers; each defaults to 100.\n";
+                << "Visible dimensions must be positive integers; each defaults to 100.\n"
+                << "Storage adds one BLOCK cell on each side (+2 per dimension).\n";
       return 0;
     }
 
-    dim_t* dimension = nullptr;
+    dim* dimension = nullptr;
     if (option == "-n" || option == "-x") {
       dimension = &n;
     } else if (option == "-m" || option == "-y") {
@@ -56,7 +74,7 @@ int main(int argc, char* argv[]){
       return 1;
     }
     const std::string_view value = argv[i];
-    dim_t parsed = 0;
+    dim parsed = 0;
     const auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
     if (result.ec != std::errc{} || result.ptr != value.data() + value.size() || parsed == 0) {
       std::cerr << "Invalid dimension for " << option << ": " << value
@@ -68,6 +86,7 @@ int main(int argc, char* argv[]){
 
   try {
     WorldState world(n, m, k);
+    LUT lut("lut.bin");
 
     // start world running function
     //    needs to take tick rate, which can be changed by user during runtime, into account. 

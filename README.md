@@ -17,6 +17,25 @@ representation, material rules, and rendering are still being explored.
 | [Transition variations](experiments/transition_variations/README.md) | Compare cube, face, and edge LUT updates with one thread per tile and double buffering |
 | [CPU update proof of concept](experiments/sim_update_poc/README.md) | Serial updates, per-cell threads, and persistent worker pools |
 
+## World state prototype
+
+The main prototype in `src/` keeps visible dimensions `n,m,k` and allocates
+`(n+2)*(m+2)*(k+2)` cells with an unrendered, one-cell BLOCK shell. Both device
+buffers start with AIR inside and BLOCK outside. Tile access uses visible-world
+coordinates through DeviceWorldView; padding and strides are handled internally.
+The renderer's signed coordinate access also supports the padded halo.
+Face types, packing helpers, binary LUT loading, and device lookup live in
+`src/state/lut.hpp/cu`. World ticks use the LUT; `worldTick` waits for completion
+and calls `swapBuffers`. Scene loading, rendering integration, and starting the
+ticker from main are still being completed. See the [architecture model](docs/architecture.md).
+
+`make -C src run-world_blank` loads `src/state/la.bin` and checks seven GPU ticks
+on four blank worlds, including 100x100x100. It verifies AIR interiors, BLOCK
+padding, state bits, output coverage, LUT upload, and buffer parity using
+`updateWorld`, `waitForTick`, and `swapBuffers`. Supply another LUT with
+`ARGS=/absolute/path/to/rules.bin`. Set `CUDA_HOME` for a nonstandard toolkit.
+The older `world_padding` test still needs its call sites adapted to the LUT API.
+
 ## CUDA experiment
 
 ```sh
