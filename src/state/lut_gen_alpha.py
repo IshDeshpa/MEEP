@@ -25,8 +25,8 @@ properties = {
     Elem.EMITTER: {"density": 0, "movable": False},
     Elem.VOID:    {"density": 0, "movable": False},
 }
-
-debug = (Elem.EMITTER, Elem.VOID, Elem.EMITTER)
+reserved_properties = {"density": 0, "movable": False}
+debug = (Elem.BLOCK, Elem.VOID, Elem.EMITTER)
 
 # all non-debug elements should fall downwards in gravity, maybe later fire can fizzle upwards
 # TODO: figure out if reactions and movements should happen together? i think so but need to confirm
@@ -86,18 +86,17 @@ def applyGravity(elems):
     moved = [False] * 4
     
     for top, bottom in ((0,2), (1,3)):
-        top_p = properties[outputs[top]]
-        bot_p = properties[outputs[bottom]]
+        top_p = properties.get(outputs[top], reserved_properties)
+        bot_p = properties.get(outputs[bottom], reserved_properties)
 
-        if top_p["density"] > bot_p["density"]:
+        if (top_p["movable"]
+                and bot_p["movable"]
+                and top_p["density"] > bot_p["density"]):
             outputs[top], outputs[bottom] = outputs[bottom], outputs[top]
             moved[top] = True
-            moved[bottom] = True       
+            moved[bottom] = True     
 
     return outputs, moved
-
-
-
 
 # adjacency defintion
 # 0 1
@@ -212,7 +211,7 @@ def main():
     assert loaded == outputs
     print("All LUT entries survived writing and reading.")
 
-    i = 0x1300
+    i = 0x2112
     print("Input (tick 0): ")
     printTile(i)
     print("Intermediate (tick 1): ")
