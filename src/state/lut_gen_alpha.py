@@ -71,7 +71,7 @@ def encodeTile(elems):
 def chooseEmission(elems):
     counts = {}
     for elem in elems:
-        if elem in (Elem.EMITTER, Elem.VOID, Elem.BLOCK, Elem.AIR):
+        if elem not in (Elem.WATER, Elem.EARTH, Elem.LAVA):
             continue
         counts[elem] = counts.get(elem, 0) + 1
     if not counts:
@@ -147,7 +147,7 @@ def evalTile(tile):
 
     if Elem.VOID in g_original:
         for k in range(4):
-            if g_original[k] not in (Elem.AIR, Elem.BLOCK, Elem.VOID):
+            if g_original[k] not in (Elem.AIR, Elem.BLOCK, Elem.VOID, Elem.EMITTER):
                 output[k] = Elem.AIR
 
     return encodeTile(output)
@@ -211,13 +211,13 @@ def main():
     assert loaded == outputs
     print("All LUT entries survived writing and reading.")
 
-    i = 0x2112
+    i = 0x6510
     print("Input (tick 0): ")
     printTile(i)
     print("Intermediate (tick 1): ")
     printTile(loaded[i])
     j = loaded[i]
-    print("Next Outpit (tick 2): ")
+    print("Next Output (tick 2): ")
     printTile(loaded[j])
 
 
