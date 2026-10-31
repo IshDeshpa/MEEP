@@ -16,6 +16,21 @@ class Elem(IntEnum):
 
 unused = set()
 
+properties = {
+    Elem.AIR:     {"density": 0, "movable": True},
+    Elem.WATER:   {"density": 1, "movable": True},
+    Elem.LAVA:    {"density": 2, "movable": True},
+    Elem.EARTH:   {"density": 3, "movable": True},
+    Elem.BLOCK:   {"density": 0, "movable": False},
+    Elem.EMITTER: {"density": 0, "movable": False},
+    Elem.VOID:    {"density": 0, "movable": False},
+}
+
+debug = (Elem.EMITTER, Elem.VOID, Elem.EMITTER)
+
+# all non-debug elements should fall downwards in gravity, maybe later fire can fizzle upwards
+# TODO: figure out if reactions and movements should happen together? i think so but need to confirm
+
 # note: block does nothing, emitter spawns stuff in its tile, void replaces all in its tile with air
 # rules[source][neighbour] = result
 
@@ -66,6 +81,24 @@ def chooseEmission(elems):
     return candidates[0]  # choose the first one in case of a tie
 
 
+def applyGravity(elems):
+    outputs = elems.copy()
+    moved = [False] * 4
+    
+    for top, bottom in ((0,2), (1,3)):
+        top_p = properties[outputs[top]]
+        bot_p = properties[outputs[bottom]]
+
+        if top_p["density"] > bot_p["density"]:
+            outputs[top], outputs[bottom] = outputs[bottom], outputs[top]
+            moved[top] = True
+            moved[bottom] = True       
+
+    return outputs, moved
+
+
+
+
 # adjacency defintion
 # 0 1
 # 2 3
@@ -84,9 +117,10 @@ neighbours = (
 
 def evalTile(tile):
     original = decodeTile(tile)
-    output = original.copy()
-
-    used = [False] * 4
+    moved = [False] * 4
+    g_original, moved = applyGravity(original)
+    output = g_original.copy()
+    used = moved.copy()
 
     for i in range(4):
         if used[i]:
@@ -95,22 +129,27 @@ def evalTile(tile):
         for j in neighbours[i]:
             if used[j]:
                 continue
-            result_i = react(original[i], original[j])
-            result_j = react(original[j], original[i])
+            result_i = react(g_original[i], g_original[j])
+            result_j = react(g_original[j], g_original[i])
 
-            if result_i != original[i] or result_j != original[j]:
+            if result_i != g_original[i] or result_j != g_original[j]:
                 output[i] = result_i
                 output[j] = result_j
                 used[i] = True
                 used[j] = True
                 break
 
-    if Elem.EMITTER in original:
-        emission = chooseEmission(original)
+    if Elem.EMITTER in g_original:
+        emission = chooseEmission(g_original)
         if emission is not None:
             for k in range(4):
-                if original[k] == Elem.AIR:
+                if g_original[k] == Elem.AIR:
                     output[k] = emission
+
+    if Elem.VOID in g_original:
+        for k in range(4):
+            if g_original[k] not in (Elem.AIR, Elem.BLOCK, Elem.VOID):
+                output[k] = Elem.AIR
 
     return encodeTile(output)
 
@@ -173,11 +212,15 @@ def main():
     assert loaded == outputs
     print("All LUT entries survived writing and reading.")
 
-    i = 0x1031
-    print("Input: ")
+    i = 0x1300
+    print("Input (tick 0): ")
     printTile(i)
-    print("Output: ")
+    print("Intermediate (tick 1): ")
     printTile(loaded[i])
+    j = loaded[i]
+    print("Next Outpit (tick 2): ")
+    printTile(loaded[j])
+
 
 if __name__ == "__main__":
     main()
