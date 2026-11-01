@@ -6,7 +6,7 @@
 
 namespace meep {
 
-void cuda_check(int status, const char* call, const char* file, int line) {
+void cudaCheck(int status, const char* call, const char* file, int line) {
     if (status == cudaSuccess)
         return;
 
