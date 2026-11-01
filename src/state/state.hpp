@@ -92,10 +92,31 @@ struct DeviceWorldView {
   Cell* next;
   std::size_t n_pad, m_pad, k_pad;
 
+  // Visible extent per axis; the padding is one cell on each side.
+  MEEP_HOST_DEVICE
+  std::size_t visibleN() const noexcept { return n_pad - 2; }
+  MEEP_HOST_DEVICE
+  std::size_t visibleM() const noexcept { return m_pad - 2; }
+  MEEP_HOST_DEVICE
+  std::size_t visibleK() const noexcept { return k_pad - 2; }
+
+  MEEP_HOST_DEVICE
+  std::size_t size() const noexcept { return visibleN() * visibleM() * visibleK(); }
+
   // Visible (0,0,0) is padded (1,1,1); size_t(-1) denotes the lower halo.
   MEEP_HOST_DEVICE
   std::size_t index(std::size_t x, std::size_t y,
                     std::size_t z) const noexcept;
+
+  MEEP_HOST_DEVICE
+  // Inverse of the visible layout ind = x*m*k + y*k + z (z fastest).
+  MEEP_HOST_DEVICE
+  worldcoord coord(std::size_t ind) const noexcept {
+    const std::size_t m = visibleM(), k = visibleK();
+    return worldcoord(static_cast<int>(ind / (m * k)),
+                      static_cast<int>((ind / k) % m),
+                      static_cast<int>(ind % k));
+  }
 
   // Read one cell from curr; caller guarantees the coordinate is in bounds.
   MEEP_HOST_DEVICE
@@ -111,11 +132,18 @@ struct DeviceWorldView {
                     std::size_t z) const noexcept;
 
   MEEP_HOST_DEVICE
-  void writeTile(std::size_t x, std::size_t y, std::size_t z,
-                 const CubeTile& tile) const noexcept;
+  CubeTile readTile(worldcoord c) const noexcept;
 
   MEEP_HOST_DEVICE
-  CubeTile readTile(worldcoord c) const noexcept;
+  void writeCell(std::size_t x, std::size_t y, std::size_t z,
+                 const Cell cell) const noexcept;
+
+  MEEP_HOST_DEVICE
+  void writeCell(worldcoord c, const Cell cell) const noexcept;
+
+  MEEP_HOST_DEVICE
+  void writeTile(std::size_t x, std::size_t y, std::size_t z,
+                 const CubeTile& tile) const noexcept;
 
   MEEP_HOST_DEVICE
   void writeTile(worldcoord c, const CubeTile& tile) const noexcept;

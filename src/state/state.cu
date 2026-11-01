@@ -118,7 +118,7 @@ size_t WorldState::paddedIndex(size_t x, size_t y, size_t z) const {
 }
 
 void WorldState::swapBuffers() {
-    std::swap(d_curr, d_next);
+    std::swap(d_curr, d_next); // swap in-CPU copies
     device_view = {d_curr, d_next, n_pad, m_pad, k_pad};
 }
 
@@ -134,7 +134,13 @@ std::size_t DeviceWorldView::index(std::size_t x, std::size_t y,
 __host__ __device__
 Cell DeviceWorldView::readCell(std::size_t x, std::size_t y,
                                std::size_t z) const noexcept {
+#ifdef __CUDA_ARCH__
     return curr[index(x, y, z)];
+#else
+    Cell c;
+    cudaMemcpy(&c, &curr[index(x, y, z)], sizeof(Cell), cudaMemcpyDeviceToHost);
+    return c;
+#endif
 }
 
 __host__ __device__
@@ -153,9 +159,40 @@ CubeTile DeviceWorldView::readTile(std::size_t x, std::size_t y,
         const std::size_t dx = (c >> 2) & 1;
         const std::size_t dy = (c >> 1) & 1;
         const std::size_t dz = c & 1;
-        tile.cells[c] = curr[base + m_pad * k_pad * dx + k_pad * dy + dz];
+
+        const std::size_t ind = base + m_pad * k_pad * dx + k_pad * dy + dz;
+#ifdef __CUDA_ARCH__
+        tile.cells[c] = curr[ind];
+#else
+        cudaMemcpy(&tile.cells[c], &curr[ind], sizeof(Cell), cudaMemcpyDeviceToHost);
+#endif
     }
     return tile;
+}
+
+__host__ __device__
+CubeTile DeviceWorldView::readTile(worldcoord c) const noexcept {
+    return readTile(static_cast<std::size_t>(c.x),
+                   static_cast<std::size_t>(c.y),
+                   static_cast<std::size_t>(c.z));
+}
+
+__host__ __device__
+void DeviceWorldView::writeCell(std::size_t x, std::size_t y,
+                                std::size_t z, const Cell cell) const noexcept {
+#ifdef __CUDA_ARCH__
+    next[index(x, y, z)] = cell;
+#else
+    Cell c;
+    cudaMemcpy(&next[index(x, y, z)], &cell, sizeof(Cell), cudaMemcpyHostToDevice);
+#endif
+}
+
+__host__ __device__
+void DeviceWorldView::writeCell(worldcoord c, Cell cell) const noexcept {
+    writeCell(static_cast<std::size_t>(c.x),
+                static_cast<std::size_t>(c.y),
+                static_cast<std::size_t>(c.z), cell);
 }
 
 __host__ __device__
@@ -167,15 +204,13 @@ void DeviceWorldView::writeTile(std::size_t x, std::size_t y,
         const std::size_t dx = (c >> 2) & 1;
         const std::size_t dy = (c >> 1) & 1;
         const std::size_t dz = c & 1;
-        next[base + m_pad * k_pad * dx + k_pad * dy + dz] = tile.cells[c];
+        const std::size_t ind = base + m_pad * k_pad * dx + k_pad * dy + dz;
+#ifdef __CUDA_ARCH__
+        next[ind] = tile.cells[c];
+#else
+        cudaMemcpy(&next[ind], &tile.cells[c], sizeof(Cell), cudaMemcpyHostToDevice);
+#endif
     }
-}
-
-__host__ __device__
-CubeTile DeviceWorldView::readTile(worldcoord c) const noexcept {
-    return readTile(static_cast<std::size_t>(c.x),
-                   static_cast<std::size_t>(c.y),
-                   static_cast<std::size_t>(c.z));
 }
 
 __host__ __device__
