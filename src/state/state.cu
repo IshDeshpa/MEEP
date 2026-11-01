@@ -79,7 +79,7 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
         throw;
     }
     world = initial.release();
-    device_view = {d_curr, d_next, m_pad, k_pad};
+    device_view = {d_curr, d_next, n_pad, m_pad, k_pad};
 }
 
 WorldState::~WorldState() {
@@ -119,7 +119,7 @@ size_t WorldState::paddedIndex(size_t x, size_t y, size_t z) const {
 
 void WorldState::swapBuffers() {
     std::swap(d_curr, d_next);
-    device_view = {d_curr, d_next, m_pad, k_pad};
+    device_view = {d_curr, d_next, n_pad, m_pad, k_pad};
 }
 
 // DeviceWorldView: padded indexing and tile access.
@@ -129,6 +129,19 @@ std::size_t DeviceWorldView::index(std::size_t x, std::size_t y,
     return static_cast<std::size_t>(z + 1) +
            k_pad * (static_cast<std::size_t>(y + 1) +
                     m_pad * static_cast<std::size_t>(x + 1));
+}
+
+__host__ __device__
+Cell DeviceWorldView::readCell(std::size_t x, std::size_t y,
+                               std::size_t z) const noexcept {
+    return curr[index(x, y, z)];
+}
+
+__host__ __device__
+Cell DeviceWorldView::readCell(worldcoord c) const noexcept {
+    return readCell(static_cast<std::size_t>(c.x),
+                    static_cast<std::size_t>(c.y),
+                    static_cast<std::size_t>(c.z));
 }
 
 __host__ __device__
@@ -156,6 +169,20 @@ void DeviceWorldView::writeTile(std::size_t x, std::size_t y,
         const std::size_t dz = c & 1;
         next[base + m_pad * k_pad * dx + k_pad * dy + dz] = tile.cells[c];
     }
+}
+
+__host__ __device__
+CubeTile DeviceWorldView::readTile(worldcoord c) const noexcept {
+    return readTile(static_cast<std::size_t>(c.x),
+                   static_cast<std::size_t>(c.y),
+                   static_cast<std::size_t>(c.z));
+}
+
+__host__ __device__
+void DeviceWorldView::writeTile(worldcoord c, const CubeTile& tile) const noexcept {
+    writeTile(static_cast<std::size_t>(c.x),
+            static_cast<std::size_t>(c.y),
+            static_cast<std::size_t>(c.z), tile);
 }
 
 void WorldState::updateWorld(std::size_t tick, LUT& lut) {

@@ -1,6 +1,7 @@
 #include "render/cell.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtx/component_wise.hpp>
+#include <stdexcept>
 
 HostCube &HostCube::instance(){
   static HostCube cube;
@@ -10,16 +11,19 @@ HostCube &HostCube::instance(){
 const std::array<CubeFace, 6> HostCube::makeFaces() const{
   std::array<CubeFace, 6> arr;
 
-  // loop through all tris in CUBE_GEOM and assign them around
-  for(unsigned int i=0; i<CUBE_GEOM.size(); i++){
-    Tri t = CUBE_GEOM.tris[i];
+  // Faces are classified from the CPU-side copy that CUBE_GEOM keeps.
+  const HostGeometryData &geom = CUBE_GEOM.host();
+
+  // loop through all tris and assign them around
+  for(unsigned int i=0; i<geom.tris.size(); i++){
+    Tri t = geom.tris[i];
 
     // What direction is the triangle facing?
     // Winding determines facing; CCW is dir it faces
-    glm::dvec3 v0, v1, v2; 
-    v0 = CUBE_GEOM.verts[t.x];
-    v1 = CUBE_GEOM.verts[t.y];
-    v2 = CUBE_GEOM.verts[t.z];
+    glm::dvec3 v0, v1, v2;
+    v0 = geom.verts[t.x];
+    v1 = geom.verts[t.y];
+    v2 = geom.verts[t.z];
 
     glm::dvec3 normal = glm::normalize(glm::cross(v1 - v0, v2 - v0)); // this points in the direction we're facing
     if(glm::compAdd(glm::abs(normal)) != 1) throw std::runtime_error("Invalid normal");
@@ -65,17 +69,6 @@ const std::array<CubeFace, 6> HostCube::makeFaces() const{
 // #include <stddef.h>
 // #include <glm/gtx/component_wise.hpp>
 // #include <stdexcept>
-//
-// static inline bool isFaceExposed(CellRef &c, WorldState &ws, const CellFace &face){
-//   const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[face.d]);
-//   if(adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
-//      adjacent.x >= static_cast<int>(ws.n) ||
-//      adjacent.y >= static_cast<int>(ws.m) ||
-//      adjacent.z >= static_cast<int>(ws.k)){
-//     return true; // A world boundary is exposed to the outside.
-//   }
-//   return ws(adjacent).elem == Element::AIR;
-// }
 //
 //
 // unsigned int CellRenderEntity::updateTriangleMask(WorldState &ws){

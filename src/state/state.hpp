@@ -90,13 +90,21 @@ static_assert(sizeof(CubeTile) == 8 * sizeof(Cell));
 struct DeviceWorldView {
   const Cell* curr;
   Cell* next;
-  std::size_t m_pad, k_pad;
+  std::size_t n_pad, m_pad, k_pad;
 
   // Visible (0,0,0) is padded (1,1,1); size_t(-1) denotes the lower halo.
   MEEP_HOST_DEVICE
   std::size_t index(std::size_t x, std::size_t y,
                     std::size_t z) const noexcept;
 
+  // Read one cell from curr; caller guarantees the coordinate is in bounds.
+  MEEP_HOST_DEVICE
+  Cell readCell(std::size_t x, std::size_t y, std::size_t z) const noexcept;
+
+  MEEP_HOST_DEVICE
+  Cell readCell(worldcoord c) const noexcept;
+
+  // Reads gather from curr; writes scatter to next.
   // Caller guarantees the full tile fits, including origins at size_t(-1).
   MEEP_HOST_DEVICE
   CubeTile readTile(std::size_t x, std::size_t y,
@@ -105,6 +113,12 @@ struct DeviceWorldView {
   MEEP_HOST_DEVICE
   void writeTile(std::size_t x, std::size_t y, std::size_t z,
                  const CubeTile& tile) const noexcept;
+
+  MEEP_HOST_DEVICE
+  CubeTile readTile(worldcoord c) const noexcept;
+
+  MEEP_HOST_DEVICE
+  void writeTile(worldcoord c, const CubeTile& tile) const noexcept;
 };
 static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
 

@@ -1,69 +1,75 @@
 #include "render/cell.hpp"
-#include <cuda_runtime_api.h>
+#include "render/primitives.hpp"
+#include "extra/check.hpp"
+#include <cuda_runtime.h>
 #include <driver_types.h>
 #include <glm/glm.hpp>
 #include <glm/gtx/component_wise.hpp>
 
-__device__ static inline bool isFaceExposed(CellRef &c, WorldState &ws, const CubeFace &face){
-  const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[face.d]);
-  bool res = false;
-  if(adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
-     adjacent.x >= static_cast<int>(ws.n) ||
-     adjacent.y >= static_cast<int>(ws.m) ||
-     adjacent.z >= static_cast<int>(ws.k)){
-    return true; // A world boundary is exposed to the outside.
-  }
+// a standard cube, set up as a constant on the GPU
+__constant__ DeviceCube::Data DEVICE_CUBE;
 
-  return ws(adjacent).elem == Element::AIR;
+__device__ static inline bool isFaceExposed(CellRef &c, DeviceWorldView dwv, const CubeFace &face){
+  const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[face.d]);
+
+  return adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
+          adjacent.x >= (dwv.n_pad) ||
+          adjacent.y >= (dwv.m_pad) ||
+          adjacent.z >= (dwv.k_pad) || 
+          dwv.readCell(adjacent).elem == Element::AIR;
 }
 
 // A face is renderable when its cell is not AIR and its neighbor is AIR.
-__device__ static inline bool isRenderable(CellRef &c, WorldState &ws, const CubeFace &face){
-  return c.cell.elem != Element::AIR && isFaceExposed(c, ws, face);
+__device__ static inline bool isRenderable(CellRef &c, DeviceWorldView dwv, const CubeFace &face){
+  return c.cell.elem != Element::AIR && isFaceExposed(c, dwv, face);
 }
 
-__device__ static inline bool isAnyFaceRenderable(CellRef &c, WorldState &ws, DeviceCube &dc){
+__device__ static inline bool isAnyFaceRenderable(CellRef &c, DeviceWorldView dwv){
   bool res = false;
-  for(int i=0; i<dc.triangleCount; i++){
-    const CubeFace &face = dc.faces[i];
-    res = res && isRenderable(c, ws, face);
+  for(int i=0; i<DEVICE_CUBE.triangleCount/2; i++){
+    const CubeFace &face = DEVICE_CUBE.faces[i];
+    res = res || isRenderable(c, dwv, face);
   }
 
   return res;
 }
 
-DeviceCube &DeviceCube::instance(){
-  static DeviceCube cube;
+const DeviceCube &DeviceCube::instance(){
+  static const DeviceCube cube;
   return cube;
 }
 
-// Creates a DeviceCube containing GPU pointers; this can be trivially copied
-// to the GPU through function parameters
+// Geometry pointers come from HostCube's Geometry, faces are uploaded here,
+// and the whole struct is copied into the __constant__ DEVICE_CUBE that device code reads.
 DeviceCube::DeviceCube(){
-  const HostCube &host = HostCube::instance();
-  
-  const size_t verts_size = host.CUBE_GEOM.verts.size() * sizeof(Vertex);
-  const size_t tris_size = host.CUBE_GEOM.tris.size() * sizeof(Tri);
+  HostCube &host = HostCube::instance();
+
   const size_t faces_size = host.CUBE_FACES.size() * sizeof(CubeFace);
+  CubeFace *d_faces = nullptr;
+  CUDA_CHECK(cudaMalloc(&d_faces, faces_size));
+  CUDA_CHECK(cudaMemcpy(d_faces, host.CUBE_FACES.data(), faces_size, cudaMemcpyHostToDevice));
 
+  host.CUBE_GEOM.transfer(); // the cube must be on the GPU before its handle is copied below
+  const DeviceGeometryData &cube_gd = host.CUBE_GEOM.device();
+  verts = cube_gd.verts;
+  tris = cube_gd.tris;
+  vertexCount = cube_gd.vertexCount;
+  triangleCount = cube_gd.triangleCount;
+  faces = d_faces;
 
-  cudaMalloc(&verts, verts_size);
-  cudaMemcpy(&verts, host.CUBE_GEOM.verts.data(), verts_size, cudaMemcpyHostToDevice);
-
-  cudaMalloc(&tris, tris_size);
-  cudaMemcpy(&tris, host.CUBE_GEOM.tris.data(), tris_size, cudaMemcpyHostToDevice);
-  
-  cudaMalloc(&faces, faces_size);
-  cudaMemcpy(&faces, host.CUBE_GEOM.faces.data(), faces_size, cudaMemcpyHostToDevice);
-
-  triangleCount = host.CUBE_GEOM.size();
+  const Data &data = *this;
+  CUDA_CHECK(cudaMemcpyToSymbol(DEVICE_CUBE, &data, sizeof(Data)));
 }
 
 // Generate CellRenderEntity only for those cells that could possibly
 // be rendered (track state of any non-obstructed cell)
-__device__ CellRenderEntity *CellRenderEntity::create(CellRef &c, WorldState &ws){
-  if(!isAnyFaceRenderable(c, ws)) return nullptr; // consider non-renderable cells as obstructed
+__device__ CellRenderEntity *CellRenderEntity::create(CellRef &c, DeviceWorldView dwv){
+  return (!isAnyFaceRenderable(c, dwv)) ? nullptr : new CellRenderEntity(c); // consider non-renderable cells as obstructed
+}
 
-  return std::unique_ptr<CellRenderEntity>(new CellRenderEntity(c));
+__device__ CellRenderEntity::CellRenderEntity(CellRef &cr)
+    : DeviceEntity(DEVICE_CUBE, ELEMENT_COLOR_LUT[cr.cell.elem], cr.coords,
+                   glm::dvec3(0, 0, 0)),
+      cell_ref(cr) {
 }
 

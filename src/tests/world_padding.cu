@@ -21,19 +21,19 @@ std::vector<Cell> download(const Cell* buffer, size_t count) {
     return result;
 }
 
-__global__ void exercise_tile_view(DeviceWorldView buffers,
+__global__ void exerciseTileView(DeviceWorldView buffers,
                                    std::ptrdiff_t x, std::ptrdiff_t y,
                                    std::ptrdiff_t z) {
-    CubeTile tile = buffers.read_tile(x, y, z);
+    CubeTile tile = buffers.readTile(x, y, z);
     for (unsigned c = 0; c < 8; ++c) {
         tile.cells[c].elem = static_cast<Element>(
             (static_cast<unsigned>(tile.cells[c].elem) + 1) & 15);
         tile.cells[c].state = (tile.cells[c].state + c + 1) & 15;
     }
-    buffers.write_tile(x, y, z, tile);
+    buffers.writeTile(worldcoord(x, y, z), tile);
 }
 
-void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
+void checkTileHelpers(WorldState& world, const std::vector<Cell>& source) {
     const std::ptrdiff_t origins[][3] = {
         {-1, -1, -1}, {0, 0, 0},
         {static_cast<std::ptrdiff_t>(world.n) - 1,
@@ -57,7 +57,7 @@ void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
 
         CUDA_CHECK(cudaMemcpy(world.d_next, source.data(), bytes,
                               cudaMemcpyHostToDevice));
-        exercise_tile_view<<<1, 1>>>(world.device_view,
+        exerciseTileView<<<1, 1>>>(world.device_view,
                                      origin[0], origin[1], origin[2]);
         CUDA_CHECK(cudaGetLastError());
         world.wait_for_tick();
@@ -67,7 +67,7 @@ void check_tile_helpers(WorldState& world, const std::vector<Cell>& source) {
     }
 }
 
-void check_world(size_t n, size_t m, size_t k) {
+void checkWorld(size_t n, size_t m, size_t k) {
     const size_t count = (n + 2) * (m + 2) * (k + 2);
     const size_t bytes = count * sizeof(Cell);
     size_t free_bytes, total_bytes;
@@ -138,7 +138,7 @@ void check_world(size_t n, size_t m, size_t k) {
     CUDA_CHECK(cudaMemcpy(world.d_curr, expected.data(), bytes,
                           cudaMemcpyHostToDevice));
 
-    check_tile_helpers(world, expected);
+    checkTileHelpers(world, expected);
 
     const Cell* original_current = world.d_curr;
     // Seven ticks cover x/z in both partitions and finish on odd buffer parity.
@@ -166,7 +166,7 @@ void check_world(size_t n, size_t m, size_t k) {
     }
 }
 
-void check_invalid_dimensions() {
+void checkInvalidDimensions() {
     bool rejected = false;
     try { WorldState world(0, 1, 1); }
     catch (const std::invalid_argument&) { rejected = true; }
@@ -184,12 +184,12 @@ void check_invalid_dimensions() {
 
 int main() {
     try {
-        check_invalid_dimensions();
+        checkInvalidDimensions();
         const size_t sizes[][3] = {
             {1, 1, 1}, {2, 2, 2}, {3, 4, 5},
             {4, 5, 6}, {8, 6, 4}, {10, 14, 18}};
         for (const auto& size : sizes) {
-            check_world(size[0], size[1], size[2]);
+            checkWorld(size[0], size[1], size[2]);
         }
         std::cout << "PASS: padding, initialization, visible indexing, both partitions, "
                      "partial blocks, coordinate-based tile helpers, LUT-owned BLOCK behavior, and buffer parity.\n";

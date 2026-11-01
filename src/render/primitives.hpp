@@ -1,11 +1,13 @@
 #pragma once
 
+#include <glm/fwd.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
+#include <cstddef>
 #include <string>
-
-#include "extra/lut.hpp"
+#include <vector>
+#include "extra/enum_lut.hpp"
 #include "state/state.hpp"
 
 using Vertex=glm::dvec3; // might change later if normals/other are added. heterogeneous coords
@@ -24,20 +26,21 @@ enum class Direction : uint8_t{
   Z_MINUS,
   COUNT
 };
-constexpr EnumLUT<Direction, glm::vec3> DIRECTION_LUT({{
+
+DEFINE_ENUM_LUT(DIRECTION_LUT, Direction, glm::vec3,
   glm::vec3(1, 0, 0),
   glm::vec3(-1, 0, 0),
   glm::vec3(0, 1, 0),
   glm::vec3(0, -1, 0),
   glm::vec3(0, 0, 1),
   glm::vec3(0, 0, -1),
-}});
+);
 
 struct Color {
   uint8_t r; uint8_t g; uint8_t b; uint8_t a;
 };
 
-constexpr EnumLUT<Element, Color> ELEMENT_COLOR_LUT({{
+DEFINE_ENUM_LUT(ELEMENT_COLOR_LUT, Element, Color, 
     {  0,   0,   0,   0}, // AIR
     { 30, 144, 255, 255}, // WATER
     {139,  90,  43, 255}, // EARTH
@@ -45,79 +48,78 @@ constexpr EnumLUT<Element, Color> ELEMENT_COLOR_LUT({{
     {100, 100, 110, 255}, // BLOCK
     {255, 215,   0, 255}, // EMITTER
     { 40,  10,  60, 255}, // VOID
-}});
+);
 
-// A set of triangles and vertices, meant to be passed to the GPU as a batch
-struct Geometry{
+// Host-side geometry parsed from an OBJ file.
+struct HostGeometryData {
   std::vector<Vertex> verts;
   std::vector<Tri> tris;
-
-  Geometry(){}
-
-  explicit Geometry(const std::string &path){
-    this->load(path);
-  }
-
-  VertRef addVertex(Vertex v){
-    const VertRef index = static_cast<VertRef>(verts.size());
-    verts.push_back(v);
-    return index;
-  }
-
-  void addTriangle(Tri indices){
-    tris.push_back(indices);
-  }
-
-  void addTriangle(Vertex a, Vertex b, Vertex c){
-    const VertRef ia = addVertex(a);
-    const VertRef ib = addVertex(b);
-    const VertRef ic = addVertex(c);
-    addTriangle({ia, ib, ic});
-  }
-
-  // To combine two geometries
-  Geometry &operator+=(const Geometry &other){
-    if(this == &other){
-      Geometry copy(other);
-      return *this += copy;
-    }
-
-    const std::size_t offset = verts.size();
-    verts.insert(verts.end(), other.verts.begin(), other.verts.end());
-
-    tris.reserve(tris.size() + other.tris.size());
-    for (Tri tri : other.tris) {
-        tri[0] += offset;
-        tri[1] += offset;
-        tri[2] += offset;
-        tris.push_back(tri);
-    }
-
-    return *this;
-  }
-
-  void load(const std::string &path);
-  void save(const std::string &path);
-  void print();
-
-  std::size_t size() const {return tris.size();}
 };
 
-// References an entire geometry shared by entities, with its own transform.
-struct Entity{
-  const Geometry &geom;
-  std::vector<bool> triangleMask; // mask out geometry triangles; indexed by TriRef
+// Parses an OBJ file on the host (CPU only). Returns false if the file cannot be
+// opened or read; throws on malformed content.
+bool readObj(const std::string &path, HostGeometryData &out);
 
+// Non-owning geometry view; pointers refer to GPU buffers.
+struct DeviceGeometryData {
+  const Vertex *verts = nullptr;
+  const Tri *tris = nullptr;
+  std::size_t vertexCount = 0;   // vertices occupy [0, vertexCount)
+  std::size_t triangleCount = 0; // triangles occupy [0, triangleCount)
+};
+
+// CPU-side geometry (editable) plus its GPU copy, created by transfer().
+class Geometry {
+public:
+  Geometry() = default;
+  Geometry(const std::string &path); // loads the file; throws if it cannot be read
+  ~Geometry(); // frees the GPU copy
+
+  Geometry(const Geometry &) = delete;
+  Geometry &operator=(const Geometry &) = delete;
+
+  // file -> CPU copy. Host only.
+  bool load(const std::string &path);
+  // CPU copy -> file. Host only.
+  bool save(const std::string &path) const;
+
+  // CPU copy edits. Host only.
+  VertRef addVertex(Vertex v);
+  void addTriangle(Tri indices);
+  void addTriangle(Vertex a, Vertex b, Vertex c);
+
+  // Uploads the CPU copy to the GPU, replacing any previous transfer. Returns the
+  // GPU pointer to the const DeviceGeometryData that now describes it.
+  const DeviceGeometryData *transfer();
+
+  // Host-side copy of the most recent transfer's handle (GPU pointers and counts).
+  const DeviceGeometryData &device() const { return device_gd; }
+  const HostGeometryData &host() const { return host_gd; }
+
+private:
+  HostGeometryData host_gd;
+  DeviceGeometryData device_gd; // handle values; buffers are owned by this object
+  const DeviceGeometryData *d_geom = nullptr; // GPU-resident DeviceGeometryData
+};
+
+struct DeviceEntityData {
+  const DeviceGeometryData &geom; // geometry data for this entity
+  bool *triMask; // same size as geom.triangleCount, represents which triangles to show and which to hide
   Color color;
   glm::dmat4 transform;
+};
 
-  Entity(const Geometry &g, Color c, glm::dmat4 t): geom(g), color(c), transform(t){}
-  Entity(const Geometry &g, Color c, glm::dvec3 translation, glm::dvec3 rot_euler): geom(g), color(c), transform(toTransform(translation, rot_euler)){}
+class DeviceEntity : public DeviceEntityData{
+public:
+  using Data=DeviceEntityData;
+  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData &dgd, Color c,
+                                glm::dmat4 t);
 
-  glm::dmat4 toTransform(glm::dvec3 translation, glm::dvec3 rot_euler) {
-      return glm::translate(glm::dmat4(1.0), translation)
-          * glm::eulerAngleXYZ(rot_euler.x, rot_euler.y, rot_euler.z);
-  }
+  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData &dgd, Color c,
+                                worldcoord coords, glm::dvec3 rot_euler);
+
+  MEEP_HOST_DEVICE glm::dmat4 toTransform(glm::dvec3 translation,
+                                          glm::dvec3 rot_euler);
 };
 
 // mainly for camera, and perhaps for other objects that have a look direction and position

@@ -1,4 +1,7 @@
 #include "render/primitives.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <string>
 
 int main(int argc, char *argv[]){
   if(argc < 2) exit(-1);
@@ -31,6 +34,14 @@ int main(int argc, char *argv[]){
     cube.save("./assets/cube.obj");
   } else if(std::string(argv[1]) == "load"){
     cube.load("./assets/cube.obj");
-    cube.print();
+    const HostGeometryData &host = cube.host();
+    for(const Tri &t : host.tris){
+      std::printf("(%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f)\n",
+                  host.verts[t.x].x, host.verts[t.x].y, host.verts[t.x].z,
+                  host.verts[t.y].x, host.verts[t.y].y, host.verts[t.y].z,
+                  host.verts[t.z].x, host.verts[t.z].y, host.verts[t.z].z);
+    }
   }
+
+  exit(0);
 }
