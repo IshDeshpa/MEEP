@@ -6,7 +6,14 @@ OBJ_DIR  := build
 MODULES  := render state extra
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
-DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
+# DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into
+# build/debug/; DEBUG=0 (default) is the normal optimized build.
+DEBUG    ?= 0
+ifneq ($(filter-out 0 1,$(DEBUG)),)
+$(error DEBUG must be 0 or 1, got '$(DEBUG)')
+endif
+
+DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"' -DMEEP_DEBUG=$(DEBUG)
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 TARGET   := main
@@ -17,6 +24,11 @@ VALGRIND  ?= valgrind
 VALGRIND_FLAGS ?= --tool=memcheck --leak-check=full --track-origins=yes
 GDB       ?= gdb
 GDB_FLAGS ?= --args
+
+ifeq ($(DEBUG),1)
+OBJ_DIR := build/debug
+CXXFLAGS := $(filter-out -O3,$(CXXFLAGS)) -O0 -g
+endif
 
 # Keep sanitizer objects separate so changing SANITIZER never reuses stale objects.
 ifneq ($(SANITIZER),)
@@ -62,6 +74,10 @@ CXXFLAGS += -I$(CUDA_INC)
 endif
 # Device linking supports out-of-line helpers; LTO enables cross-file inlining.
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+ifeq ($(DEBUG),1)
+# -G (device debug) cannot be combined with -dlto, so LTO is dropped here
+NVCCFLAGS := $(filter-out -O3 -dlto,$(NVCCFLAGS)) -O0 -g -G
+endif
 ifneq ($(SANITIZER),)
 NVCCFLAGS := $(filter-out -O3,$(NVCCFLAGS)) -O1 -g -Xcompiler=-fno-omit-frame-pointer
 endif
@@ -179,6 +195,7 @@ help:
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
 	@echo "  RUNNER=gdb          launch any run* target in GDB"
+	@echo "  DEBUG=1             build unoptimized with debug info (-O0 -g, -G for CUDA) into build/debug/"
 	@echo "  SANITIZER=address   build with AddressSanitizer (separate build/address/)"
 	@echo "  SANITIZER=thread    build with ThreadSanitizer (separate build/thread/)"
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
@@ -194,6 +211,7 @@ help:
 	@echo "Variables (override as make VAR=value):"
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  RUNNER=$(RUNNER)  valgrind | gdb | address | thread"
+	@echo "  DEBUG=$(DEBUG)            0 | 1 (1 = unoptimized debug build)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"
