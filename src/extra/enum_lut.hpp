@@ -6,10 +6,12 @@
 #include <type_traits>
 
 template <typename E, typename T>
-requires std::is_enum_v<E>
-      && std::is_unsigned_v<std::underlying_type_t<E>>
-      && requires { E::COUNT; } // COUNT must be a member of the enum
 struct EnumLUT {
+    // E must be an unsigned enum with a COUNT member (the size of the table)
+    static_assert(std::is_enum_v<E>, "EnumLUT key must be an enum");
+    static_assert(std::is_unsigned_v<std::underlying_type_t<E>>,
+                  "EnumLUT key must have an unsigned underlying type");
+
     static constexpr std::size_t size =
         static_cast<std::size_t>(E::COUNT);
 

@@ -1,7 +1,17 @@
 #include "render/cell.hpp"
 #include <glm/glm.hpp>
 #include <glm/gtx/component_wise.hpp>
+#include <cstdio>
 #include <stdexcept>
+
+void CellRenderEntity::print() const {
+  const CellRef &cr = cell_ref;
+  std::printf("CellRenderEntity{elem=%u state=%u coords=(%d %d %d) color=(%u %u %u %u)}\n",
+    static_cast<unsigned>(cr.cell.elem), static_cast<unsigned>(cr.cell.state),
+    cr.coords.x, cr.coords.y, cr.coords.z,
+    static_cast<unsigned>(color.r), static_cast<unsigned>(color.g),
+    static_cast<unsigned>(color.b), static_cast<unsigned>(color.a));
+}
 
 HostCube &HostCube::instance(){
   static HostCube cube;
@@ -12,7 +22,7 @@ const std::array<CubeFace, 6> HostCube::makeFaces() const{
   std::array<CubeFace, 6> arr;
 
   // Faces are classified from the CPU-side copy that CUBE_GEOM keeps.
-  const HostGeometryData &geom = CUBE_GEOM.host();
+  const HostGeometryData &geom = *CUBE_GEOM.host();
 
   // loop through all tris and assign them around
   for(unsigned int i=0; i<geom.tris.size(); i++){
@@ -54,81 +64,3 @@ const std::array<CubeFace, 6> HostCube::makeFaces() const{
 
   return arr;
 }
-
-
-
-
-
-
-// #include "render/primitives.hpp"
-// #include "state/state.hpp"
-// #include <map>
-// #include <algorithm>
-// #include <cstdio>
-// #include <memory>
-// #include <stddef.h>
-// #include <glm/gtx/component_wise.hpp>
-// #include <stdexcept>
-//
-//
-// unsigned int CellRenderEntity::updateTriangleMask(WorldState &ws){
-//   triangleMask.resize(geom.size());
-//
-//   const auto mark_triangle = [this](TriRef triangle) {
-//     if(triangle >= geom.size()){
-//       throw std::out_of_range("Cell face triangle is outside its geometry");
-//     }
-//     triangleMask[triangle] = true;
-//   };
-//
-//   for(const CellFace &face : CUBE_FACES){
-//     if(isRenderable(this->cell_ref, ws, face)){
-//       mark_triangle(face.a);
-//       mark_triangle(face.b);
-//     }
-//   }
-//
-//   return std::count(this->triangleMask.begin(), this->triangleMask.end(), true);
-// }
-//
-// void CellRenderEntity::updateColor(){
-//   this->color = ELEMENT_COLOR_LUT[this->cell_ref.cell.elem];
-// }
-//
-// // Written by claude
-// void CellRenderEntity::print(){
-//   const Cell &cell = this->cell_ref.cell;
-//   std::printf("CellRenderEntity at (%d, %d, %d): element=%u state=%u\n",
-//               this->cell_ref.coords.x, this->cell_ref.coords.y,
-//               this->cell_ref.coords.z, static_cast<unsigned int>(cell.elem),
-//               static_cast<unsigned int>(cell.state));
-//   std::printf("  geometry=%p\n",
-//               static_cast<const void *>(&this->geom));
-//   std::printf("  color=(%u, %u, %u, %u) triangles=%zu mask=",
-//               static_cast<unsigned int>(this->color.r),
-//               static_cast<unsigned int>(this->color.g),
-//               static_cast<unsigned int>(this->color.b),
-//               static_cast<unsigned int>(this->color.a), this->geom.size());
-//   for(bool enabled : this->triangleMask){
-//     std::putchar(enabled ? '1' : '0');
-//   }
-//   std::printf("\n  visible_faces=");
-//   static constexpr const char *direction_names[] = {
-//       "X_PLUS", "X_MINUS", "Y_PLUS", "Y_MINUS", "Z_PLUS", "Z_MINUS"};
-//   bool first_face = true;
-//   for(const CellFace &face : CUBE_FACES){
-//     const auto is_enabled = [this](TriRef triangle){
-//       return triangle < this->geom.size() &&
-//              triangle < this->triangleMask.size() &&
-//              this->triangleMask[triangle];
-//     };
-//     if(is_enabled(face.a) || is_enabled(face.b)){
-//       if(!first_face) std::printf(", ");
-//       std::printf("%s", direction_names[static_cast<unsigned int>(face.d)]);
-//       first_face = false;
-//     }
-//   }
-//   if(first_face) std::printf("none");
-//   std::putchar('\n');
-// }
-//

@@ -9,6 +9,7 @@ AGENTS.md
 */.cache
 .vscode/*
 src/ishan-build.sh
+roymoy-transfer.sh
 src/main
 # Local compilation databases
 compile_commands.json

@@ -10,13 +10,12 @@
 #include "render/primitives.hpp"
 #include "state/state.hpp"
 
-// A cell reference wrapper that also has
-// self-contained coords
+// A cell that also has self-contained coords
 struct CellRef{
-  Cell &cell;
+  Cell cell;
   worldcoord coords;
 
-  CellRef(Cell &cell, worldcoord c): cell(cell), coords(c){}
+  MEEP_HOST_DEVICE CellRef(Cell cell, worldcoord c): cell(cell), coords(c){}
 };
 
 struct CubeFace{
@@ -62,31 +61,22 @@ private:
   DeviceCube();
 };
 
-class CellRenderEntity : public DeviceEntity {
-  CellRef &cell_ref;
+#ifdef __CUDACC__
+extern __constant__ DeviceCube::Data DEVICE_CUBE;
+#endif
 
-  MEEP_DEVICE static CellRenderEntity *create(CellRef &c, DeviceWorldView dwv);
-  MEEP_DEVICE CellRenderEntity(CellRef &cr);
+class CellRenderEntity : public DeviceEntity {
+  CellRef cell_ref;
+  
+public:
+  // Placeholder for containers that default-construct; overwritten by a copy from the GPU
+  CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, worldcoord(0)) {}
+
+  MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, coord, glm::dvec3(0.0)), cell_ref(CellRef(c, coord)) {}
+  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, cr.coords, glm::dvec3(0.0)), cell_ref(cr) {}
+
+  // Host only: prints the cell, its coords and its color to stdout
+  void print() const;
 };
 
-// class CellRenderEntity : public Entity{
-// private:
-//   MEEP_DEVICE static const std::array<CellFace, 6> makeFaces();
-//
-// public:
-//   CellRef &cell_ref;
-//
-//   inline static const Geometry CUBE_GEOM{"./assets/cube.obj"}; // buffers
-//   inline static std::array<CellFace, 6> CUBE_FACES{makeFaces()}; // 6 faces for a cube
-//
-//
-//   unsigned int updateTriangleMask(WorldState &ws); // return new count of visible faces
-//   void updateColor(); // based on cell reference's current elem
-//
-//   void print();
-//
-//   static std::unique_ptr<CellRenderEntity> create(CellRef &c, WorldState &ws); // factory function, call with CellRenderEntity.create
-//
-// };
-
-//
+MEEP_DEVICE bool isAnyFaceRenderable(CellRef &c, DeviceWorldView dwv);

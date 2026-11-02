@@ -60,7 +60,7 @@ void checkTileHelpers(WorldState& world, const std::vector<Cell>& source) {
         exerciseTileView<<<1, 1>>>(world.device_view,
                                      origin[0], origin[1], origin[2]);
         CUDA_CHECK(cudaGetLastError());
-        world.wait_for_tick();
+        world.waitForTick();
         const auto actual = download(world.d_next, source.size());
         require(std::memcmp(actual.data(), expected.data(), bytes) == 0,
                 "Tile helper used wrong coordinates, touched other cells, or filtered BLOCK");
@@ -153,8 +153,8 @@ void checkWorld(size_t n, size_t m, size_t k) {
         CUDA_CHECK(cudaMemcpy(world.d_next, poisoned.data(), bytes,
                               cudaMemcpyHostToDevice));
         if (tick & 1) world.updateWorld(tick);
-        else world.update_world(tick);
-        world.wait_for_tick();
+        else world.updateWorld(tick);
+        world.waitForTick();
         const auto actual = download(world.d_next, count);
         require(std::memcmp(actual.data(), expected.data(), bytes) == 0,
                 "Tick missed an interior cell, changed padding, or misindexed cells");

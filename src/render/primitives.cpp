@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+// OBJ parser by Claude
 bool readObj(const std::string &path, HostGeometryData &out){
   std::ifstream inf(std::filesystem::path(MEEP_SRC_DIR) / path);
   if(!inf) return false;

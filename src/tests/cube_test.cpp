@@ -34,7 +34,7 @@ int main(int argc, char *argv[]){
     cube.save("./assets/cube.obj");
   } else if(std::string(argv[1]) == "load"){
     cube.load("./assets/cube.obj");
-    const HostGeometryData &host = cube.host();
+    const HostGeometryData &host = *cube.host();
     for(const Tri &t : host.tris){
       std::printf("(%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f) - (%0.2f %0.2f %0.2f)\n",
                   host.verts[t.x].x, host.verts[t.x].y, host.verts[t.x].z,

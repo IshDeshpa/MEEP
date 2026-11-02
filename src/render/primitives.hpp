@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include "extra/cuda_compat.hpp"
+#include "extra/cuda_raii.hpp"
 #include "extra/enum_lut.hpp"
 #include "state/state.hpp"
 
@@ -93,17 +95,18 @@ public:
   const DeviceGeometryData *transfer();
 
   // Host-side copy of the most recent transfer's handle (GPU pointers and counts).
-  const DeviceGeometryData &device() const { return device_gd; }
-  const HostGeometryData &host() const { return host_gd; }
+  const DeviceGeometryData *device() const { return &device_gd; }
+  const HostGeometryData *host() const { return &host_gd; }
 
 private:
   HostGeometryData host_gd;
   DeviceGeometryData device_gd; // handle values; buffers are owned by this object
+  
   const DeviceGeometryData *d_geom = nullptr; // GPU-resident DeviceGeometryData
 };
 
 struct DeviceEntityData {
-  const DeviceGeometryData &geom; // geometry data for this entity
+  const DeviceGeometryData *geom; // geometry data for this entity
   bool *triMask; // same size as geom.triangleCount, represents which triangles to show and which to hide
   Color color;
   glm::dmat4 transform;
@@ -112,20 +115,22 @@ struct DeviceEntityData {
 class DeviceEntity : public DeviceEntityData{
 public:
   using Data=DeviceEntityData;
-  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData &dgd, Color c,
+
+  // Zeroed placeholder, for containers that default-construct; the fields must be set before use
+  DeviceEntity() : DeviceEntityData{} {}
+
+  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
                                 glm::dmat4 t);
 
-  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData &dgd, Color c,
+  MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
                                 worldcoord coords, glm::dvec3 rot_euler);
 
   MEEP_HOST_DEVICE glm::dmat4 toTransform(glm::dvec3 translation,
                                           glm::dvec3 rot_euler);
 };
 
-// mainly for camera, and perhaps for other objects that have a look direction and position
-// (thinking light source maybe?)
-struct Pose {
-  glm::dvec4 pos = glm::dvec4(0, 0, 0, 1); // position
-  glm::dvec4 look = glm::dvec4(0, 0, -1, 0); // look direction
-};
+// Scan byte array (prefix-sum) and return total of input array as well
+unsigned scanByteNaiveLaunch(DeviceBuffer<uint8_t> &gpu_in, DeviceBuffer<uint32_t> &gpu_out, unsigned blocks, unsigned threads_per_block);
+MEEP_GLOBAL void scanByteNaiveInit(uint8_t *in, uint32_t *out, std::size_t sz);
+MEEP_GLOBAL void scanByteNaiveStep(uint32_t *in, uint32_t *out, uint8_t d, std::size_t sz);
 
