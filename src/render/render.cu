@@ -9,7 +9,10 @@
 
 Renderer &Renderer::instance(){
   static Renderer renderer;
+
   // Do your const inits here
-  [[maybe_unused]] static const DeviceCube &device_cube = DeviceCube::instance(); // initialize the DeviceCube singleton on GPU side
+  renderer.device_cube = &DeviceCube::instance(); // initialize the DeviceCube singleton on GPU side (the DeviceCube constructor allocates all the device-side buffers)
+  DeviceScreen::instance(); // initialize the DeviceScreen singleton and copy it into DEVICE_SCREEN
+
   return renderer;
 }

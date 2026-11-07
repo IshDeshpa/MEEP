@@ -76,8 +76,10 @@ public:
   // Placeholder for containers that default-construct; overwritten by a copy from the GPU
   CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, worldcoord(0)) {}
 
+  // DeviceEntity's constructor already allocates triMask
   MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, coord, glm::dvec3(0.0)), cell_ref(CellRef(c, coord)) {}
-  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, cr.coords, glm::dvec3(0.0)), cell_ref(cr) {}
+
+  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): CellRenderEntity(cr.cell, cr.coords, dcd, color) {}
 
   // Host only: prints the cell, its coords and its color to stdout
   void print() const;

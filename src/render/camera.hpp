@@ -4,27 +4,49 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/matrix.hpp>
-#include <memory>
+#include <cstddef>
+#include <vector>
 
 #include "config.hpp"
 #include "extra/cuda_compat.hpp"
-#include "extra/cuda_raii.hpp"
 #include "render/primitives.hpp"
 
-struct Screen {
-  MEEP_HOST_DEVICE Screen(const std::size_t w, const std::size_t h);
-
-  MEEP_HOST_DEVICE Screen(const Screen &other): 
-    WIDTH(other.WIDTH),
-    HEIGHT(other.HEIGHT),
-    framebuffer(other.framebuffer),
-    depthbuffer(other.depthbuffer){}
+// CPU-side screen: the framebuffer and depth buffer are host vectors
+struct HostScreen {
+  HostScreen(const std::size_t w, const std::size_t h) : WIDTH(w), HEIGHT(h), framebuffer(w * h), depthbuffer(w * h){}
 
   const std::size_t WIDTH; // pixels
   const std::size_t HEIGHT; // pixels
+  std::vector<Color> framebuffer; // size = w*h
+  std::vector<uint8_t> depthbuffer; // size = w*h
+};
+
+// GPU-resident screen data: the buffers are device pointers
+struct DeviceScreenData {
+  std::size_t WIDTH; // pixels
+  std::size_t HEIGHT; // pixels
   Color *framebuffer; // size = w*h
   uint8_t *depthbuffer; // size = w*h
 };
+
+// Host-side handle that allocates the GPU buffers and copies DeviceScreenData into DEVICE_SCREEN
+class DeviceScreen : public DeviceScreenData {
+public:
+  using Data = DeviceScreenData;
+
+  // Global singleton, built on first use. Not const: the buffers are written to by kernels.
+  static DeviceScreen &instance();
+
+  DeviceScreen(const DeviceScreen &) = delete;
+  DeviceScreen &operator=(const DeviceScreen &) = delete;
+
+private:
+  DeviceScreen(const std::size_t w, const std::size_t h);
+};
+
+#ifdef __CUDACC__
+extern __constant__ DeviceScreen::Data DEVICE_SCREEN;
+#endif
 
 static constexpr glm::dmat4x4 makeP(double a, double b, double s, double aspect){
   return {
@@ -35,15 +57,16 @@ static constexpr glm::dmat4x4 makeP(double a, double b, double s, double aspect)
   };
 }
 
-struct CameraData{
-  // Screen data
-  const std::size_t WIDTH = CAMERA_SCREEN_WIDTH; // pixels
-  const std::size_t HEIGHT = CAMERA_SCREEN_HEIGHT; // pixels
-  Color *framebuffer; // size = w*h
-  uint8_t *depthbuffer; // size = w*h
+class Camera : public HostScreen {
+public:
+  // Global singleton, built on first use
+  static Camera &instance();
+
+  Camera(const Camera &) = delete;
+  Camera &operator=(const Camera &) = delete;
 
   // Will change as we move
-  glm::dmat4x4 pose; // transform matrix from camera centered at 0,0,0 in -Z direction
+  glm::dmat4x4 pose = glm::dmat4x4(1.0); // transform matrix from camera centered at 0,0,0 in -Z direction (identity: at the origin, looking down -Z)
 
   // Fixed at construction (think like camera's inherent parameters)
   const double Z_NEAR = CAMERA_Z_NEAR;
@@ -56,7 +79,9 @@ struct CameraData{
   const double B = (-(2 * Z_FAR * Z_NEAR) / (Z_FAR - Z_NEAR));
   const double S = (1.0 / std::tan(glm::radians(FOV_DEG) / 2.0));
 
-  const glm::dmat4x4 P = makeP(A, B, S, double(WIDTH) / HEIGHT);
+  const double ASPECT = double(CAMERA_SCREEN_WIDTH) / CAMERA_SCREEN_HEIGHT;
+
+  const glm::dmat4x4 P = makeP(A, B, S, ASPECT);
 
   // w=0 makes this a direction, so the pose's translation does not affect it
   MEEP_HOST_DEVICE const glm::dmat4x4 getV() const {
@@ -71,24 +96,6 @@ struct CameraData{
     return getP() * getV();
   }
 
-};
-
-class Camera : public CameraData {
-public:
-  using Data=CameraData;
-
-  // Global singleton, built on first use
-  static Camera &instance();
-
-  Camera() = default;
-  Camera(const Camera &) = delete;
-  Camera &operator=(const Camera &) = delete;
-
-  glm::dmat4x4 syncPose();
 private:
-  static CameraData *c_gpu;
+  Camera() : HostScreen(CAMERA_SCREEN_WIDTH, CAMERA_SCREEN_HEIGHT) {}
 };
-
-#ifdef __CUDACC__
-extern __constant__ Camera::Data *GLOBAL_CAMERA;
-#endif

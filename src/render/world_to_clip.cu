@@ -13,14 +13,14 @@ void worldToClipLaunch(WorldState &ws){
  
   Renderer &r = Renderer::instance();
 
-  Camera &c = Camera::instance(); 
-  glm::dmat4x4 vp = c.syncPose(); // update the GPU pose 
+  Camera &c = Camera::instance();
+  glm::dmat4x4 vp = c.getVP();
   
   uint16_t threads_per_block = 256;
   std::size_t blocks = (r.entities->size() + threads_per_block - 1) / threads_per_block;
 
   DeviceBuffer<glm::dmat4x4> transforms(r.entities->size());
-  generateTransforms<<<blocks, threads_per_block>>>(r.entities->data(), r.entities->size(), transforms.data(), vp);
+  //generateTransforms<<<blocks, threads_per_block>>>(r.entities->data(), r.entities->size(), transforms.data(), vp);
 
   // We have the transforms of every object; now, we operate on each vertex and decide if it's clipped
   // 8 vertices per entity
