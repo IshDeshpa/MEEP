@@ -6,7 +6,6 @@
 #include <cuda_runtime_api.h>
 #include <cstdint>
 #include <cstdio>
-#include <vector>
 
 void stateToWorldLaunch(WorldState &ws){
   static Renderer &r = Renderer::instance();
@@ -32,27 +31,27 @@ void stateToWorldLaunch(WorldState &ws){
   isVisible<<<blocks, threads_per_block>>>(ws.device_view, is_visible.data());
 
 #if (MEEP_DEBUG == 1)
-  cudaDeviceSynchronize();
-  std::vector<uint8_t> visible_host(world_size);
-  CUDA_CHECK(cudaMemcpy(visible_host.data(), is_visible.data(), world_size * sizeof(uint8_t), cudaMemcpyDeviceToHost));
-
-  printf("is_visible: ");
-  for(std::size_t i=0; i<world_size; i++){
-    printf("%u ", static_cast<unsigned>(visible_host[i]));
-  }
+  // cudaDeviceSynchronize();
+  // std::vector<uint8_t> visible_host(world_size);
+  // CUDA_CHECK(cudaMemcpy(visible_host.data(), is_visible.data(), world_size * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+  //
+  // printf("is_visible: ");
+  // for(std::size_t i=0; i<world_size; i++){
+  //   printf("%u ", static_cast<unsigned>(visible_host[i]));
+  // }
 #endif
 
   unsigned num_refs = scanByteNaiveLaunch(is_visible, offsets, blocks, threads_per_block);
 
 #if (MEEP_DEBUG == 1)
-  cudaDeviceSynchronize();
-  std::vector<uint32_t> offsets_host(world_size);
-  CUDA_CHECK(cudaMemcpy(offsets_host.data(), offsets.data(), world_size * sizeof(uint32_t), cudaMemcpyDeviceToHost));
-
-  printf("\noffsets: ");
-  for(std::size_t i=0; i<world_size; i++){
-    printf("%u ", static_cast<unsigned>(offsets_host[i]));
-  }
+  // cudaDeviceSynchronize();
+  // std::vector<uint32_t> offsets_host(world_size);
+  // CUDA_CHECK(cudaMemcpy(offsets_host.data(), offsets.data(), world_size * sizeof(uint32_t), cudaMemcpyDeviceToHost));
+  //
+  // printf("\noffsets: ");
+  // for(std::size_t i=0; i<world_size; i++){
+  //   printf("%u ", static_cast<unsigned>(offsets_host[i]));
+  // }
 #endif
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
@@ -86,7 +85,7 @@ __global__ void isVisible(DeviceWorldView dwv, uint8_t *is_visible){
 }
 
 // Create render cell references & entities (basically; a copy of all cells we may need to render)
-__global__ void createRefsEntities(DeviceWorldView dwv, uint8_t *is_visible, uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz){
+__global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= world_sz) return;
 

@@ -25,7 +25,7 @@ __host__ __device__ DeviceEntity::DeviceEntity(const DeviceGeometryData *dgd,
                                             glm::dvec3 rot_euler)
     : DeviceEntity(dgd, c, toTransform(coords, rot_euler)) {}
 
-__host__ __device__ glm::dmat4 DeviceEntity::toTransform(
+__host__ __device__ const glm::dmat4 DeviceEntity::toTransform(
     glm::dvec3 translation, glm::dvec3 rot_euler) {
   return glm::translate(glm::dmat4(1.0), translation) *
          glm::eulerAngleXYZ(rot_euler.x, rot_euler.y, rot_euler.z);

@@ -6,6 +6,7 @@
 #include <glm/gtx/euler_angles.hpp>
 #include <cstddef>
 #include <string>
+#include <type_traits>
 #include <vector>
 #include "extra/cuda_compat.hpp"
 #include "extra/cuda_raii.hpp"
@@ -69,6 +70,8 @@ struct DeviceGeometryData {
   std::size_t vertexCount = 0;   // vertices occupy [0, vertexCount)
   std::size_t triangleCount = 0; // triangles occupy [0, triangleCount)
 };
+static_assert(std::is_trivially_copyable_v<DeviceGeometryData>);
+static_assert(std::is_standard_layout_v<DeviceGeometryData>);
 
 // CPU-side geometry (editable) plus its GPU copy, created by transfer().
 class Geometry {
@@ -109,8 +112,10 @@ struct DeviceEntityData {
   const DeviceGeometryData *geom; // geometry data for this entity
   bool *triMask; // same size as geom.triangleCount, represents which triangles to show and which to hide
   Color color;
-  glm::dmat4 transform;
+  glm::dmat4x4 transform;
 };
+static_assert(std::is_trivially_copyable_v<DeviceEntityData>);
+static_assert(std::is_standard_layout_v<DeviceEntityData>);
 
 class DeviceEntity : public DeviceEntityData{
 public:
@@ -125,7 +130,7 @@ public:
   MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
                                 worldcoord coords, glm::dvec3 rot_euler);
 
-  MEEP_HOST_DEVICE glm::dmat4 toTransform(glm::dvec3 translation,
+  MEEP_HOST_DEVICE const static glm::dmat4 toTransform(glm::dvec3 translation,
                                           glm::dvec3 rot_euler);
 };
 

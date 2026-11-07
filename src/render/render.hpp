@@ -20,22 +20,21 @@ private:
   Renderer() = default;
 };
 
-// 2. State -> world-space vertices, triangles, and colors
+// 1. State -> world-space vertices, triangles, and colors
 void stateToWorldLaunch(WorldState &ws);
 MEEP_GLOBAL void isVisible(DeviceWorldView dwv, uint8_t *is_visible);
-
 // Create cell references
-MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, uint8_t *is_visible, uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz);
+MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz);
 
-// 3. World -> clip space
+// 2. World -> clip space AND clip the triangles against the near plane
 void worldToClipLaunch();
-MEEP_GLOBAL void worldToClip();
-// 4. Clip the triangles against the near plane
-void clipNearPlaneLaunch();
-MEEP_GLOBAL void clipNearPlane();
-// 5. Clip space -> NDC
+MEEP_GLOBAL void generateTransforms(const CellRenderEntity *entities, std::size_t sz, glm::dmat4x4 *transforms, glm::dmat4x4 VP);
+
+// 3. Clip space -> NDC
 MEEP_GLOBAL void clipToNdc();
-// 6. NDC -> screen
+
+// 4. NDC -> screen
 MEEP_GLOBAL void ndcToScreen();
-// 7. Rasterize the screen (assign colors to pixels)
+
+// 5. Rasterize the screen (assign colors to pixels)
 MEEP_GLOBAL void rasterize();

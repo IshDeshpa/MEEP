@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <array>
+#include <type_traits>
 
 #include "extra/cuda_compat.hpp"
 #include "render/primitives.hpp"
@@ -43,6 +44,9 @@ private:
 struct DeviceCubeData : public DeviceGeometryData { // Faces also reside in GPU memory.
   const CubeFace *faces = nullptr;
 };
+// Not checked for standard layout: it derives from DeviceGeometryData and adds its own members,
+// which standard layout forbids. Trivial copyability is what the memcpy needs.
+static_assert(std::is_trivially_copyable_v<DeviceCubeData>);
 
 // We need the class (with the functions) to be separate from the GPU resident data struct,
 // because otherwise we can't instantiate a const DeviceCube because it'll call the constructor
