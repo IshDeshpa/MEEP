@@ -100,6 +100,5 @@ __global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitm
     &DEVICE_CUBE,
     ELEMENT_COLOR_LUT[cell.elem]
   );
-
-  cre->setFaceMask(face_bitmasks[ind]); // save the exposed and non-exposed faces for later steps 
+  cre->setFaceMask(face_bitmasks[ind]); // save the exposed and non-exposed faces for later steps
 }

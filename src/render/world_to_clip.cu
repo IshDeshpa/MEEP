@@ -18,7 +18,7 @@ void worldToClipLaunch(){
   glm::dmat4x4 vp = c.getVP();
   
   uint16_t threads_per_block = 256;
-  std::size_t blocks = (r.entities->size() + threads_per_block - 1) / threads_per_block;
+  std::size_t blocks = (num_entities + threads_per_block - 1) / threads_per_block;
   
   // 6 faces per entity, 2 triangles per face
   // Allocate 2 times needed triangles to overspec for the clipping pass (worst-case clipping causes 1 triangle to turn into 2)

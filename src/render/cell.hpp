@@ -19,18 +19,9 @@ struct CellRef{
   MEEP_HOST_DEVICE CellRef(Cell cell, worldcoord c): cell(cell), coords(c){}
 };
 
-struct CubeFace{
-  TriRef a = std::numeric_limits<unsigned int>().max();
-  TriRef b = std::numeric_limits<unsigned int>().max();
-  Direction d; // what side of the cube is it on?
-};
-
 struct HostCube {
-  const std::array<CubeFace, 6> makeFaces() const;
-
   static constexpr const char *CUBE_PATH = "./assets/cube.obj";
   Geometry CUBE_GEOM{CUBE_PATH}; // CPU copy; DeviceCube transfers it to the GPU
-  const std::array<CubeFace, 6> CUBE_FACES{makeFaces()}; // 6 faces for a cube
 
   static HostCube &instance();
 
@@ -45,9 +36,7 @@ private:
   HostCube() = default;
 };
 
-struct DeviceCubeData : public DeviceGeometryData { // Faces also reside in GPU memory.
-  const CubeFace *faces = nullptr;
-};
+struct DeviceCubeData : public DeviceGeometryData {};
 // Not checked for standard layout: it derives from DeviceGeometryData and adds its own members,
 // which standard layout forbids. Trivial copyability is what the memcpy needs.
 static_assert(std::is_trivially_copyable_v<DeviceCubeData>);
@@ -89,10 +78,11 @@ public:
   // Bit i of face_bits is the Direction with value i (X_PLUS = bit 0, ..., Z_MINUS = bit 5).
   MEEP_DEVICE void setFaceMask(uint8_t face_bits);
 
-  MEEP_DEVICE void getFaceBits(Direction dirs[]);
-
   // Host only: prints the cell, its coords and its color to stdout
   void print() const;
 };
 
 MEEP_DEVICE uint8_t getFaceBitmask(CellRef &c, DeviceWorldView dwv);
+
+// Direction of a triangle's outward face (dominant axis of its normal, signed). Assumes axis-aligned triangles.
+MEEP_DEVICE Direction triangleDirection(const Vertex &a, const Vertex &b, const Vertex &c);
