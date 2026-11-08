@@ -13,7 +13,7 @@
 #include "extra/enum_lut.hpp"
 #include "state/state.hpp"
 
-using Vertex=glm::dvec3; // might change later if normals/other are added. heterogeneous coords
+using Vertex=glm::dvec4; // might change later if normals/other are added. heterogeneous coords
 using Tri=glm::uvec3; // indices pointing to vertices
 using Vertex2D=glm::dvec2;
 
@@ -136,6 +136,7 @@ public:
 };
 
 // Scan byte array (prefix-sum) and return total of input array as well
+// Every input byte is treated as 0 or 1: any nonzero value counts as 1, so the output and total never see larger values.
 unsigned scanByteNaiveLaunch(DeviceBuffer<uint8_t> &gpu_in, DeviceBuffer<uint32_t> &gpu_out, unsigned blocks, unsigned threads_per_block);
 MEEP_GLOBAL void scanByteNaiveInit(uint8_t *in, uint32_t *out, std::size_t sz);
 MEEP_GLOBAL void scanByteNaiveStep(uint32_t *in, uint32_t *out, uint8_t d, std::size_t sz);

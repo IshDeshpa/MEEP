@@ -30,9 +30,12 @@ bool readObj(const std::string &path, HostGeometryData &out){
     row >> tag;
 
     if(tag == "v"){
-      Vertex v(0, 0, 0);
+      Vertex v(0, 0, 0, 1);
       if(!(row >> v.x >> v.y >> v.z))
         throw std::runtime_error("Invalid OBJ vertex: " + line);
+      // Optional w; OBJ defaults it to 1 when omitted.
+      double w;
+      if(row >> w) v.w = w;
       host_verts.push_back(v);
     } else if(tag == "f"){
       std::vector<unsigned int> face;
@@ -90,7 +93,7 @@ bool Geometry::save(const std::string &path) const{
 
   outf << std::setprecision(std::numeric_limits<double>::max_digits10);
   for(const Vertex &v : host_verts)
-    outf << "v " << v.x << ' ' << v.y << ' ' << v.z << '\n';
+    outf << "v " << v.x << ' ' << v.y << ' ' << v.z << ' ' << v.w << '\n';
   for(const Tri &t : host_tris)
     outf << "f " << static_cast<unsigned long long>(t.x) + 1 << ' '
          << static_cast<unsigned long long>(t.y) + 1 << ' '

@@ -23,25 +23,25 @@ void stateToWorldLaunch(WorldState &ws){
   DeviceWorldView snapshot = ws.device_view;
   std::size_t world_size = snapshot.size();
 
-  DeviceBuffer<uint8_t> is_visible(world_size);
+  DeviceBuffer<uint8_t> face_bitmasks(world_size);
   DeviceBuffer<uint32_t> offsets(world_size);
 
   uint16_t threads_per_block = 256;
   std::size_t blocks = (world_size + threads_per_block - 1) / threads_per_block;
-  isVisible<<<blocks, threads_per_block>>>(ws.device_view, is_visible.data());
+  isVisible<<<blocks, threads_per_block>>>(ws.device_view, face_bitmasks.data());
 
 #if (MEEP_DEBUG == 1)
   // cudaDeviceSynchronize();
   // std::vector<uint8_t> visible_host(world_size);
-  // CUDA_CHECK(cudaMemcpy(visible_host.data(), is_visible.data(), world_size * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+  // CUDA_CHECK(cudaMemcpy(visible_host.data(), face_bitmasks.data(), world_size * sizeof(uint8_t), cudaMemcpyDeviceToHost));
   //
-  // printf("is_visible: ");
+  // printf("face_bitmasks: ");
   // for(std::size_t i=0; i<world_size; i++){
   //   printf("%u ", static_cast<unsigned>(visible_host[i]));
   // }
 #endif
 
-  unsigned num_refs = scanByteNaiveLaunch(is_visible, offsets, blocks, threads_per_block);
+  unsigned num_refs = scanByteNaiveLaunch(face_bitmasks, offsets, blocks, threads_per_block);
 
 #if (MEEP_DEBUG == 1)
   // cudaDeviceSynchronize();
@@ -55,7 +55,7 @@ void stateToWorldLaunch(WorldState &ws){
 #endif
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
-  createRefsEntities<<<blocks, threads_per_block>>>(snapshot, is_visible.data(), offsets.data(), r.entities->data(), world_size);
+  createRefsEntities<<<blocks, threads_per_block>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);
 
   cudaDeviceSynchronize();
 
@@ -73,7 +73,7 @@ void stateToWorldLaunch(WorldState &ws){
   // all DeviceBuffers will free themselves here
 }
 
-__global__ void isVisible(DeviceWorldView dwv, uint8_t *is_visible){
+__global__ void isVisible(DeviceWorldView dwv, uint8_t *face_bitmasks){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= dwv.size()) return;
 
@@ -81,21 +81,25 @@ __global__ void isVisible(DeviceWorldView dwv, uint8_t *is_visible){
   Cell cell = dwv.readCell(coords);
   CellRef cr{cell, coords};
 
-  is_visible[ind] = isAnyFaceRenderable(cr, dwv);
+  face_bitmasks[ind] = getFaceBitmask(cr, dwv);
 }
 
 // Create render cell references & entities (basically; a copy of all cells we may need to render)
-__global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz){
+__global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitmasks, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= world_sz) return;
 
-  if(is_visible[ind] != 1) return;
+  if(face_bitmasks[ind] == 0) return; // completely obscured, non-exposed
 
   worldcoord c = dwv.coord(ind);
   Cell cell = dwv.readCell(c);
-  ent_out[offsets[ind]] = CellRenderEntity(
+  CellRenderEntity *cre = &(ent_out[offsets[ind]]);
+
+  *cre = CellRenderEntity(
     cell, c,
     &DEVICE_CUBE,
     ELEMENT_COLOR_LUT[cell.elem]
   );
+
+  cre->setFaceMask(face_bitmasks[ind]); // save the exposed and non-exposed faces for later steps 
 }

@@ -3,7 +3,7 @@
 #include "render/render.hpp"
 
 int main() {
-    Renderer &r = Renderer::instance();
+    [[maybe_unused]] Renderer &r = Renderer::instance();
     WorldState world(10, 10, 10);
 
     // Seed a few visible cells in the padded CPU initialization image.
@@ -15,5 +15,5 @@ int main() {
     world.swapBuffers(); // now device_view is updated, and that's what'll be passed to stateToWorldLaunch
 
     stateToWorldLaunch(world);
-
+    worldToClipLaunch();
 }

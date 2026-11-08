@@ -24,6 +24,8 @@ VALGRIND  ?= valgrind
 VALGRIND_FLAGS ?= --tool=memcheck --leak-check=full --track-origins=yes
 GDB       ?= gdb
 GDB_FLAGS ?= --args
+COMPUTE_SANITIZER ?= compute-sanitizer
+COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
 
 ifeq ($(DEBUG),1)
 OBJ_DIR := build/debug
@@ -91,6 +93,8 @@ ifeq ($(RUNNER),)
 RUN_COMMAND :=
 else ifeq ($(RUNNER),valgrind)
 RUN_COMMAND := $(VALGRIND) $(VALGRIND_FLAGS)
+else ifeq ($(RUNNER),compute-sanitizer)
+RUN_COMMAND := $(COMPUTE_SANITIZER) $(COMPUTE_SANITIZER_FLAGS)
 else ifeq ($(RUNNER),gdb)
 RUN_COMMAND := $(GDB) $(GDB_FLAGS)
 else ifeq ($(RUNNER),address)
@@ -104,7 +108,7 @@ $(error RUNNER=thread requires SANITIZER=thread)
 endif
 RUN_COMMAND :=
 else
-$(error RUNNER must be empty, 'valgrind', 'gdb', 'address', or 'thread')
+$(error RUNNER must be empty, 'valgrind', 'compute-sanitizer', 'gdb', 'address', or 'thread')
 endif
 
 ifeq ($(BACKEND),zluda)
@@ -194,12 +198,14 @@ help:
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
+	@echo "  RUNNER=compute-sanitizer  run any run* target under NVIDIA Compute Sanitizer (memcheck by default)"
 	@echo "  RUNNER=gdb          launch any run* target in GDB"
 	@echo "  DEBUG=1             build unoptimized with debug info (-O0 -g, -G for CUDA) into build/debug/"
 	@echo "  SANITIZER=address   build with AddressSanitizer (separate build/address/)"
 	@echo "  SANITIZER=thread    build with ThreadSanitizer (separate build/thread/)"
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
 	@echo "  VALGRIND_FLAGS=...      override Valgrind options"
+	@echo "  COMPUTE_SANITIZER_FLAGS=...  override Compute Sanitizer options (default: --tool memcheck)"
 	@echo "  GDB_FLAGS=...           override GDB options"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
 	@echo "  clean               remove build/ and $(TARGET)"
@@ -210,7 +216,7 @@ help:
 	@echo
 	@echo "Variables (override as make VAR=value):"
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
-	@echo "  RUNNER=$(RUNNER)  valgrind | gdb | address | thread"
+	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            0 | 1 (1 = unoptimized debug build)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"

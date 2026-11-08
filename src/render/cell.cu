@@ -25,14 +25,14 @@ __device__ static bool isRenderable(CellRef &c, DeviceWorldView dwv, const CubeF
   return c.cell.elem != Element::AIR && isFaceExposed(c, dwv, face);
 }
 
-__device__ bool isAnyFaceRenderable(CellRef &c, DeviceWorldView dwv){
-  bool res = false;
+__device__ uint8_t getFaceBitmask(CellRef &c, DeviceWorldView dwv){
+  uint8_t face_bitmask = 0x00;
   for(int i=0; i<DEVICE_CUBE.triangleCount/2; i++){
     const CubeFace &face = DEVICE_CUBE.faces[i];
-    res = res || isRenderable(c, dwv, face);
+    face_bitmask |= ((isRenderable(c, dwv, face)?1:0) << static_cast<uint8_t>(face.d));
   }
 
-  return res;
+  return face_bitmask;
 }
 
 const DeviceCube &DeviceCube::instance(){
@@ -62,3 +62,14 @@ DeviceCube::DeviceCube(){
   CUDA_CHECK(cudaMemcpyToSymbol(DEVICE_CUBE, &data, sizeof(Data)));
 }
 
+
+// Device only. Walks the cube's faces: each face records which two triangles belong to it and its Direction,
+// so the mask is built from the face data rather than assuming triangle indices.
+MEEP_DEVICE void CellRenderEntity::setFaceMask(uint8_t face_bits){
+  for(int i=0; i<6; i++){
+    const CubeFace &face = DEVICE_CUBE.faces[i];
+    const bool shown = (face_bits >> static_cast<uint8_t>(face.d)) & 1u;
+    if(face.a < geom->triangleCount) triMask[face.a] = shown;
+    if(face.b < geom->triangleCount) triMask[face.b] = shown;
+  }
+}

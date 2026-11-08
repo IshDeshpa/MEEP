@@ -34,6 +34,10 @@ struct HostCube {
 
   static HostCube &instance();
 
+  // Counts of the cube's CPU-side geometry
+  static std::size_t numTris();
+  static std::size_t numVerts();
+
   HostCube(const HostCube &) = delete;
   HostCube &operator=(const HostCube &) = delete;
 
@@ -81,8 +85,14 @@ public:
 
   MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): CellRenderEntity(cr.cell, cr.coords, dcd, color) {}
 
+  // Device only: sets triMask so that the triangles of each face are shown when that face's bit is set.
+  // Bit i of face_bits is the Direction with value i (X_PLUS = bit 0, ..., Z_MINUS = bit 5).
+  MEEP_DEVICE void setFaceMask(uint8_t face_bits);
+
+  MEEP_DEVICE void getFaceBits(Direction dirs[]);
+
   // Host only: prints the cell, its coords and its color to stdout
   void print() const;
 };
 
-MEEP_DEVICE bool isAnyFaceRenderable(CellRef &c, DeviceWorldView dwv);
+MEEP_DEVICE uint8_t getFaceBitmask(CellRef &c, DeviceWorldView dwv);

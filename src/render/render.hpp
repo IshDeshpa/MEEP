@@ -8,9 +8,12 @@
 
 class Renderer{
 public:
-  CellRenderEntity *to_render;
   const DeviceCube *device_cube;
+
   std::unique_ptr<DeviceBuffer<CellRenderEntity>> entities;
+
+  std::unique_ptr<DeviceBuffer<Vertex>> verts;
+  std::unique_ptr<DeviceBuffer<Tri>> tris;
 
   // Global singleton, built on first use
   static Renderer &instance();
@@ -29,10 +32,6 @@ MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visib
 
 // 2. World -> clip space 
 void worldToClipLaunch();
-// 6 faces per mesh, 2 triangles per face
-// Allocate 2 times needed triangles to overspec for clipping (worst-case clipping causes 1 triangle to turn into 2)
-// tris->size() = 2 * (num_entities * 6 * 2)
-// verts->size() = 3 * tris->size()
 MEEP_GLOBAL void generateTris(const CellRenderEntity *entities, Vertex *verts, Tri *tris, std::size_t num_entities, glm::dmat4x4 vp);
 
 // 3. Clip the triangles against the NEAR PLANE ONLY

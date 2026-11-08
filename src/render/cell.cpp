@@ -18,6 +18,14 @@ HostCube &HostCube::instance(){
   return cube;
 }
 
+std::size_t HostCube::numTris(){
+  return instance().CUBE_GEOM.host()->tris.size();
+}
+
+std::size_t HostCube::numVerts(){
+  return instance().CUBE_GEOM.host()->verts.size();
+}
+
 const std::array<CubeFace, 6> HostCube::makeFaces() const{
   std::array<CubeFace, 6> arr;
 
