@@ -39,6 +39,10 @@ struct WorldState {
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
   Cell* d_next;
+  uint32_t* d_phase0_dirty_curr;
+  uint32_t* d_phase0_dirty_next;
+  uint32_t* d_phase1_dirty_curr;
+  uint32_t* d_phase1_dirty_next;
 
   WorldState(size_t n, size_t m, size_t k);
   ~WorldState();
@@ -82,8 +86,13 @@ struct WorldState {
  *   x = 0: [2, 3, 0, 1]    x = 1: [6, 7, 4, 5]
  *   z = 1: [3, 7, 1, 5]    z = 0: [2, 6, 0, 4]
  */
-struct CubeTile {
+struct alignas(8) CubeTile {
   Cell cells[8];
+  
+  MEEP_HOST_DEVICE
+  bool operator==(const CubeTile& other) const noexcept;
+  MEEP_HOST_DEVICE
+  bool operator!=(const CubeTile& other) const noexcept;
 };
 
 static_assert(sizeof(Cell) == 1);
@@ -94,19 +103,21 @@ struct DeviceWorldView {
   const Cell* curr;
   Cell* next;
   std::size_t m_pad, k_pad;
+  uint32_t* phase0_dirty_curr;
+  uint32_t* phase0_dirty_next;
+  uint32_t* phase1_dirty_curr;
+  uint32_t* phase1_dirty_next;
 
   // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
   MEEP_HOST_DEVICE
-  std::size_t index(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
+  std::size_t index(int x, int y, int z) const noexcept;
 
   // Caller guarantees the full tile fits, including origins at -1.
   MEEP_HOST_DEVICE
-  CubeTile readTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
+  CubeTile readTile(int x, int y, int z) const noexcept;
 
   MEEP_HOST_DEVICE
-  void writeTile(std::ptrdiff_t x, std::ptrdiff_t y, std::ptrdiff_t z,
+  void writeTile(int x, int y, int z,
                   const CubeTile& tile) const noexcept;
 };
 static_assert(std::is_trivially_copyable_v<DeviceWorldView>);

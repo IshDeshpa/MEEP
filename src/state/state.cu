@@ -3,6 +3,7 @@
 #include "extra/check.hpp"
 
 #include <cuda_runtime.h>
+#include <cuda/std/bit>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -32,15 +33,9 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
     : dimensions(checkedDimensions(n, m, k)), n_pad(0), m_pad(0), k_pad(0),
       world(nullptr), d_curr(nullptr), d_next(nullptr) {
     const auto max = std::numeric_limits<size_t>::max();
-    n_pad = n() + 2;
-    m_pad = m() + 2;
-    k_pad = k() + 2;
-    const size_t max_coordinate =
-        static_cast<size_t>(std::numeric_limits<std::ptrdiff_t>::max());
-    if (n_pad > max_coordinate || m_pad > max_coordinate ||
-        k_pad > max_coordinate) {
-        throw std::overflow_error("Padded dimensions exceed signed coordinate range");
-    }
+    n_pad = n + 2;
+    m_pad = m + 2;
+    k_pad = k + 2;
     if (n_pad > max / m_pad ||
         n_pad * m_pad > max / k_pad ||
         n_pad * m_pad * k_pad > max / sizeof(Cell)) {
@@ -93,16 +88,16 @@ WorldState::~WorldState() {
 }
 
 size_t WorldState::index(size_t x, size_t y, size_t z) const {
-    return deviceView().index(static_cast<std::ptrdiff_t>(x),
-                               static_cast<std::ptrdiff_t>(y),
-                               static_cast<std::ptrdiff_t>(z));
+    return deviceView().index(static_cast<int>(x),
+                               static_cast<int>(y),
+                               static_cast<int>(z));
 }
 
 size_t WorldState::index(coord c) const {
     if (c.x < -1 || c.y < -1 || c.z < -1 ||
-        static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n()) ||
-        static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m()) ||
-        static_cast<std::ptrdiff_t>(c.z) > static_cast<std::ptrdiff_t>(k())) {
+        c.x > dimensions.x ||
+        c.y > dimensions.y ||
+        c.z > dimensions.z) {
         throw std::out_of_range("Cell coordinate is outside the padded world");
     }
     return deviceView().index(c.x, c.y, c.z);
@@ -152,22 +147,29 @@ void WorldState::swapBuffers() {
     std::swap(d_curr, d_next);
 }
 
+// CubeTile Helper
+__host__ __device__
+bool CubeTile::operator==(const CubeTile& other) const noexcept {
+    return cuda::std::bit_cast<uint64_t>(*this) == cuda::std::bit_cast<uint64_t>(other);
+}
 
+__host__ __device__
+bool CubeTile::operator!=(const CubeTile& other) const noexcept {
+    return !(*this == other);
+}
 // DeviceWorldView: padded indexing and tile access.
 // These definitions share a translation unit with updateTile so optimization
 // can inline the helpers without putting their bodies in the header.
 
 __host__ __device__
-std::size_t DeviceWorldView::index(std::ptrdiff_t x, std::ptrdiff_t y,
-                                  std::ptrdiff_t z) const noexcept {
+std::size_t DeviceWorldView::index(int x, int y, int z) const noexcept {
     return static_cast<std::size_t>(z + 1) +
            k_pad * (static_cast<std::size_t>(y + 1) +
                        m_pad * static_cast<std::size_t>(x + 1));
 }
 
 __host__ __device__
-CubeTile DeviceWorldView::readTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                                    std::ptrdiff_t z) const noexcept {
+CubeTile DeviceWorldView::readTile(int x, int y, int z) const noexcept {
     CubeTile tile;
     const auto base = index(x, y, z);
     for (unsigned c = 0; c < 8; ++c) {
@@ -180,9 +182,8 @@ CubeTile DeviceWorldView::readTile(std::ptrdiff_t x, std::ptrdiff_t y,
 }
 
 __host__ __device__
-void DeviceWorldView::writeTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                                 std::ptrdiff_t z,
-                                 const CubeTile& tile) const noexcept {
+void DeviceWorldView::writeTile(int x, int y, int z,
+                                const CubeTile& tile) const noexcept {
     const auto base = index(x, y, z);
     for (unsigned c = 0; c < 8; ++c) {
         const std::size_t dx = (c >> 2) & 1;
@@ -191,6 +192,11 @@ void DeviceWorldView::writeTile(std::ptrdiff_t x, std::ptrdiff_t y,
         next[base + m_pad * k_pad * dx + k_pad * dy + dz] = tile.cells[c];
     }
 }
+
+// __host__ __device__
+// bool DeviceWorldView::checkTileDirty(size_t tile_phase, size_t tile_id) const noexcept {
+    
+// }
 
 // GPU update kernel and state transition.
 
@@ -203,22 +209,39 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
     if (tile_id >= tile_count)
         return;
 
+    const uint32_t* dirty_curr = (tile_phase == 0) ? buffers.phase0_dirty_curr : buffers.phase1_dirty_curr;
+    uint32_t* dirty_next = (tile_phase == 0) ? buffers.phase0_dirty_next : buffers.phase1_dirty_next;
+    const uint32_t* prev_phase_dirty = (tile_phase == 0) ? buffers.phase1_dirty_next : buffers.phase0_dirty_next;
+    
+    const size_t word_idx = tile_id >> 5;    // word and bit idx for dirty bmp indexing
+    const unsigned bit_idx = tile_id & 31;
+
+    // bool active = dirty_curr[word_idx] & (1 << bit_idx); 
+    bool active = (dirty_next[word_idx] & (1 << bit_idx)) | ();
+
     // Coordinates in the tile grid: z changes fastest, then y, then x.
     const size_t tz = tile_id % tiles_z;
     const size_t ty = (tile_id / tiles_z) % tiles_y;
     const size_t tx = tile_id / (tiles_z * tiles_y);
 
-    // Partition origins are padded coordinates; expose visible-world origins.
-    const auto x = static_cast<std::ptrdiff_t>(2 * tx + tile_phase) - 1;
-    const auto y = static_cast<std::ptrdiff_t>(2 * ty + tile_phase) - 1;
-    const auto z = static_cast<std::ptrdiff_t>(2 * tz + tile_phase) - 1;
+    // Partition origins are padded coordinates; expose visible-world origins
+    const auto x = static_cast<int>(2 * tx + tile_phase) - 1;
+    const auto y = static_cast<int>(2 * ty + tile_phase) - 1;
+    const auto z = static_cast<int>(2 * tz + tile_phase) - 1;
 
     const CubeTile tile = buffers.readTile(x, y, z);
+    # if DIRTY_STATE_EXCLUDE_ONLY
+    const CubeTile next_tile = (active) ? stateTransition(lut, tile, face_phase) : tile;
+    # else
     const CubeTile next_tile = stateTransition(lut, tile, face_phase);
+    # endif
     buffers.writeTile(x, y, z, next_tile);
-
-    // Uncovered cells are padding only and retain their initialized BLOCK value.
-    // TODO: swap buffers after completion. LUT calls are still placeholders.
+    
+    bool dirty = next_tile != tile;
+    const unsigned ballot = __ballot_sync(0xffffffffu, dirty);
+    if ((threadIdx.x & 31u) == 0) {
+        dirty_next[word_idx] = ballot;
+    }
 }
 
 

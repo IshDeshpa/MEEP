@@ -44,7 +44,7 @@ void worldTick(WorldState& world, LUT& lut) {
 
 
 int main(int argc, char* argv[]){
-  dim n = 100, m = 100, k = 100;
+  size_t n = 100, m = 100, k = 100;
 
   for (int i = 1; i < argc; ++i) {
     std::string_view option = argv[i];

@@ -1,6 +1,6 @@
 # MEEP architecture working model
 
-Current discussion: 2026-10-29. This is the project's living architecture note.
+Current discussion: 2026-11-05. This is the project's living architecture note.
 Revise the relevant sections as decisions change; replace superseded proposals
 rather than appending conversation history. Keep confirmed requirements,
 implemented behavior, proposals, and unresolved questions distinct.
@@ -20,7 +20,7 @@ separate from whether the resulting behavior looks good.
 
 The initial material set, world size, frame rate, and class requirements for
 CPU threading or renderer implementation remain open. Dirty
-scheduling is optional; the assistant recommends full-world updates initially.
+scheduling remains an optional optimization; full-world updates are the baseline.
 The status of probabilistic transitions should be confirmed separately.
 
 ## Current implementation and evidence
@@ -94,9 +94,86 @@ store the eight cells. Independence permits parallel execution but does not
 require separate threads or guarantee simultaneous instructions. One thread
 per face is another valid mapping, to compare later if needed.
 
-A dirty-bit proposal records whether either the x or z tick changed cells in a
-tile, then derives affected tiles for the next partition. Preserve that proposal
-as an optimization question rather than an alpha requirement.
+### Tile pruning: design choices
+
+Pruning is proposed, not implemented or measured. **Decision: use warp ballots
+for packed change flags when each partition writes its own tile map.** World
+update, propagation, and dispatch alternatives below remain open.
+
+**Activity contract.** For deterministic tile-local rules, initialize both
+partitions active. Keep a fixed activity set through each partition's x/z pair;
+record `changed_x OR changed_z`, even if z undoes x. Keep changed tiles pending
+for their own next visit and wake overlapping tiles in the other partition.
+Sleep only after both orientations leave the tile unchanged; preserve pending
+work until consumed. Other-partition changes alone are insufficient to decide
+activity. Edits and rule-relevant aging events invalidate both partitions;
+random/time-dependent rules and nonlocal reads need additional wakeup policies.
+
+An interior partition-1 tile (i,j,k) overlaps partition-0 tiles
+(i+a,j+b,k+c), a,b,c in {0,1}; the reverse mapping uses {-1,0}. Each shifted
+2x2x2 tile takes one cell from each of eight old tiles (four in 2D). Clip to
+valid tile grids at the BLOCK shell; no wraparound. Whole-tile propagation is
+conservative; changed-cell propagation could narrow wakeups later.
+
+**Three world-update designs.**
+
+| Design | Sleeping-tile work | Tradeoff |
+| --- | --- | --- |
+| Full update, double buffered | Load, transition, write | Baseline; no activity scheduling |
+| Masked update, double buffered | Load, optionally age, write current state into next | Saves face packing/LUT work, retains whole-world traffic |
+| Active-only movement, in place | None in movement pass | Saves movement traffic; needs separate aging and renderer ownership |
+
+Double buffering requires carry-forward writes or proof that skipped destination
+cells are current; clearing would erase state. In-place updates require disjoint
+tile-local accesses, ordered ticks, and exclusive access against rendering.
+
+Aging remains outside alpha: fuse it into the masked pass or run it separately.
+Cadence and ordering remain open; movement must carry age. Only rule-relevant
+age changes need wakeups (expiry alone if intermediate ages do not affect rules).
+A full-world aging pass retains full-world traffic even with sparse movement.
+
+**Two GPU propagation designs.** Keep flags, pending maps, optional active IDs,
+and counts on the GPU. Use immutable input maps and separate output storage
+while consumers run; order producers and consumers in one CUDA stream. Kernel
+completion supplies the handoff without CPU readback/wait; a block barrier
+cannot synchronize the grid.
+
+- **Scatter to the next partition's map:** each changed source marks up to eight
+  overlapping destinations with device-scope `atomicOr`. Clear fresh contribution
+  storage before production, then combine with existing pending work and
+  wakeups. Never clear unconsumed pending bits. Warp/block aggregation can
+  reduce global atomics; cross-block shared destinations still need atomics.
+- **Write the current partition's own map, then gather:** each source records
+  its own change predicate. On the next partition's visit, each destination
+  gathers eight source flags and ORs them with its own pending bit and wakeups.
+  Gather can be a separate pass producing activity or fused into the next
+  update. Frozen input maps avoid atomic writes during gathering.
+
+Own-map ballot output: consecutive tile IDs, 1D blocks divisible by 32, and one
+lane storing each complete `uint32_t` word. All lanes reach `__ballot_sync`;
+sleeping/invalid tiles contribute zero. Unique word ownership allows plain
+stores without pre-clear. Overwrite change words on x, then OR in z ballots in
+the ordered z kernel. Preserve older activity inputs until consumed; pending
+work and change flags have different lifetimes even if storage is reused.
+
+Ordinary `word |= mask` races between writers to the same word, including
+writers of different bits. Different words in a cache line do not clobber each
+other. Native bitwise atomics handle shared words; prefer them over CAS retry
+loops for simple OR. Cache-line size is not the RMW correctness boundary.
+Optional store optimization: stage ballot words in shared memory, synchronize
+the block, and let one warp store consecutive words. Compare improved store
+packing against shared accesses/barrier cost. Shared atomic aggregation is a
+scatter alternative; neither it nor block staging is assumed faster.
+
+**Dispatch and validation.** Full-grid masking preserves direct thread-to-tile
+indexing. Alternatively compact flags into GPU tile IDs and a device count:
+launch a maximum grid with excess threads returning, or a fixed worker grid
+looping over the active list. Both use `tile_id = active_ids[list_index]` and
+need no CPU count readback. Sparse dispatch does not remove double-buffer
+carry-forward obligations. Hierarchical bitmap scanning is a later option.
+Compare total scheduling, propagation, aging, and world-update costs in settled,
+localized-active, and broadly-active scenes. Verify every tick against a full
+reference over multiple x/z pairs, partition changes, and buffer parities.
 
 ## Padded world storage
 
