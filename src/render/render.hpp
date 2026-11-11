@@ -46,7 +46,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
 
 // 4. Clip space -> NDC
 void clipToNDCLaunch();
-// (x, y, z, w) -> (x/w, y/w, z/w, 1) for every vert. w > 0 in all cases here hopefully (if we clipped right)
+// (x, y, z, w) -> (x/w, y/w, z/w, 1) for every vert. w > Z_near (not 0) in all cases here hopefully (if we clipped right)
 // Might be able to combine with clipVertsByNear, but we'll do that later
 MEEP_GLOBAL void clipToNDC(Vertex *verts, std::size_t num_entities);
 MEEP_GLOBAL void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_sz);

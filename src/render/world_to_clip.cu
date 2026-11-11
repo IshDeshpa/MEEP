@@ -30,6 +30,8 @@ void worldToClipLaunch(){
   r.tris = std::make_unique<DeviceBuffer<Tri>>(2 * (num_entities * HostCube::numTris()));
   r.verts = std::make_unique<DeviceBuffer<Vertex>>(2 * (num_entities * HostCube::numVerts()));
 
+  
+
   generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
   cudaDeviceSynchronize();
 

@@ -43,7 +43,7 @@ __global__ void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_sz
   Vertex b = verts[tris[ind].y]; if(b.w == max_vert) return;
   Vertex c = verts[tris[ind].z]; if(c.w == max_vert) return;
 
-  int area_2d = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
+  double area_2d = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
   if(area_2d <= 0){
     // Cull
     tris[ind].x = max_tri;

@@ -13,9 +13,9 @@
 #include "extra/enum_lut.hpp"
 #include "state/state.hpp"
 
-using Vertex=glm::dvec4; // might change later if normals/other are added. heterogeneous coords
+using Vertex=glm::fvec4; // might change later if normals/other are added. heterogeneous coords
 using Tri=glm::uvec3; // indices pointing to vertices
-using Vertex2D=glm::dvec2;
+using Vertex2D=glm::fvec2;
 
 using VertRef=Tri::value_type;
 using TriRef=unsigned int; // index pointing to a triangle (use instead of a Tri&, since those refs may be invalidated since tris are in vectors)

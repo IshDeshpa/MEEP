@@ -48,7 +48,7 @@ private:
 extern __constant__ DeviceScreen::Data DEVICE_SCREEN;
 #endif
 
-static constexpr glm::dmat4x4 makeP(double a, double b, double s, double aspect){
+static constexpr glm::dmat4x4 makeP(float a, float b, float s, float aspect){
   return {
     s / aspect, 0, 0, 0,
     0, s, 0, 0,
@@ -69,17 +69,17 @@ public:
   glm::dmat4x4 pose = glm::dmat4x4(1.0); // transform matrix from camera centered at 0,0,0 in -Z direction (identity: at the origin, looking down -Z)
 
   // Fixed at construction (think like camera's inherent parameters)
-  const double Z_NEAR = CAMERA_Z_NEAR;
-  const double Z_FAR = CAMERA_Z_FAR;
-  const double FOV_DEG = CAMERA_FOV_DEG;
+  const float Z_NEAR = CAMERA_Z_NEAR;
+  const float Z_FAR = CAMERA_Z_FAR;
+  const float FOV_DEG = CAMERA_FOV_DEG;
 
   // For projection (declaration order matters: P is built from A, B, S). Projection matrix is always
   // constant, these params shouldn't change over runtime.
-  const double A = (-(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR));
-  const double B = (-(2 * Z_FAR * Z_NEAR) / (Z_FAR - Z_NEAR));
-  const double S = (1.0 / std::tan(glm::radians(FOV_DEG) / 2.0));
+  const float A = (-(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR));
+  const float B = (-(2 * Z_FAR * Z_NEAR) / (Z_FAR - Z_NEAR));
+  const float S = (1.0 / std::tan(glm::radians(FOV_DEG) / 2.0));
 
-  const double ASPECT = double(CAMERA_SCREEN_WIDTH) / CAMERA_SCREEN_HEIGHT;
+  const float ASPECT = float(CAMERA_SCREEN_WIDTH) / CAMERA_SCREEN_HEIGHT;
 
   const glm::dmat4x4 P = makeP(A, B, S, ASPECT);
 
