@@ -60,7 +60,7 @@ void checkWorld(size_t n, size_t m, size_t k, const std::string& file_path,
 #if DIRTY_STATE_EXCLUDE_ONLY
     for (size_t phase = 0; phase < 2; ++phase) {
         const size_t tiles = ((n + 2 - phase) / 2) * ((m + 2 - phase) / 2) * ((k + 2 - phase) / 2);
-        bitmap_bytes += 2 * ((tiles + 31) / 32) * sizeof(uint32_t);
+        bitmap_bytes += (phase == 0 ? 2 : 1) * ((tiles + 31) / 32) * sizeof(uint32_t);
     }
 #endif
     const size_t required_bytes = FACE_LUT_SIZE + 2 * buffer_bytes + bitmap_bytes;
@@ -105,6 +105,7 @@ void checkWorld(size_t n, size_t m, size_t k, const std::string& file_path,
         // Expose skipped output writes; source world stays entirely blank.
         CUDA_CHECK(cudaMemcpy(world.d_next, poisoned.data(), buffer_bytes,
                               cudaMemcpyHostToDevice));
+        if ((tick & 1) == 0) world.updateActiveTiles(tick);
         world.updateWorld(tick, lut);
         world.waitForTick();
         checkBuffer(world.d_next, expected, "Output after tick " + std::to_string(tick));

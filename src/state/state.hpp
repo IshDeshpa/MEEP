@@ -39,10 +39,9 @@ struct WorldState {
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
   Cell* d_next;
-  // curr: frozen activity for an x/z pair; next: changes from that pair.
-  uint32_t* d_phase0_dirty_curr;
+  // Shared frozen activity for the current partition's x/z pair.
+  uint32_t* d_active;
   uint32_t* d_phase0_dirty_next;
-  uint32_t* d_phase1_dirty_curr;
   uint32_t* d_phase1_dirty_next;
 
   WorldState(size_t n, size_t m, size_t k);
@@ -64,6 +63,8 @@ struct WorldState {
   size_t paddedIndex(size_t x, size_t y, size_t z) const;
   // Capture the current device-buffer roles and padded strides for a launch.
   DeviceWorldView deviceView() const;
+  // Call on even ticks before updateWorld, including tick 0. No host wait.
+  void updateActiveTiles(std::size_t tick);
   void updateWorld(std::size_t tick, LUT& lut);
   void waitForTick(); // Wait for the current simulation stream to finish.
   void swapBuffers();
@@ -105,14 +106,13 @@ struct DeviceWorldView {
   const Cell* curr;
   Cell* next;
   std::size_t n_pad, m_pad, k_pad;
-  uint32_t* phase0_dirty_curr;
+  uint32_t* active;
   uint32_t* phase0_dirty_next;
-  uint32_t* phase1_dirty_curr;
   uint32_t* phase1_dirty_next;
 
-  // Own pending changes OR changes in up to eight overlapping other-phase tiles.
+  // Read frozen activity; overlap gathering belongs to the activity kernel.
   MEEP_HOST_DEVICE
-  bool checkTileDirty(size_t tile_phase, size_t tx, size_t ty, size_t tz) const noexcept;
+  bool checkTileDirty(size_t tile_id) const noexcept;
 
   // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
   MEEP_HOST_DEVICE

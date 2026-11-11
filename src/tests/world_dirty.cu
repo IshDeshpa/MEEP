@@ -150,7 +150,8 @@ void checkWorld(size_t n, size_t m, size_t k, unsigned mode) {
     const size_t world_bytes = cell_count * sizeof(Cell);
     size_t bitmap_bytes = 0;
 #if DIRTY_STATE_EXCLUDE_ONLY
-    for (const auto& grid : grids) bitmap_bytes += 2 * ((tileCount(grid) + 31) / 32) * sizeof(uint32_t);
+    bitmap_bytes = ((tileCount(grids[0]) + 31) / 32) * sizeof(uint32_t);
+    for (const auto& grid : grids) bitmap_bytes += ((tileCount(grid) + 31) / 32) * sizeof(uint32_t);
 #endif
     const size_t required_bytes = FACE_LUT_SIZE + 2 * world_bytes + bitmap_bytes;
     size_t free_bytes, total_bytes;
@@ -232,6 +233,7 @@ void checkWorld(size_t n, size_t m, size_t k, unsigned mode) {
                 for (size_t z = 1; z <= k; ++z)
                     poisoned[cellIndex(padded, x, y, z)] = Cell{static_cast<Element>(15), 15};
         CUDA_CHECK(cudaMemcpy(world.d_next, poisoned.data(), world_bytes, cudaMemcpyHostToDevice));
+        if ((tick & 1) == 0) world.updateActiveTiles(tick);
         world.updateWorld(tick, lut);
         world.waitForTick();
         std::vector<Cell> actual(cell_count);
@@ -240,7 +242,7 @@ void checkWorld(size_t n, size_t m, size_t k, unsigned mode) {
             require(actual[i].elem == next[i].elem && actual[i].state == next[i].state,
                     "CPU/GPU mismatch tick=" + std::to_string(tick) + " cell=" + std::to_string(i));
 #if DIRTY_STATE_EXCLUDE_ONLY
-        checkBitmap(phase == 0 ? world.d_phase0_dirty_curr : world.d_phase1_dirty_curr,
+        checkBitmap(world.d_active,
                     activity[phase], "activity tick=" + std::to_string(tick));
         checkBitmap(phase == 0 ? world.d_phase0_dirty_next : world.d_phase1_dirty_next,
                     changes[phase], "changes tick=" + std::to_string(tick));

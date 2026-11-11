@@ -23,6 +23,11 @@ glm::ivec3 checkedDimensions(size_t n, size_t m, size_t k) {
     return glm::ivec3(static_cast<int>(n), static_cast<int>(m), static_cast<int>(k));
 }
 
+#if DIRTY_STATE_EXCLUDE_ONLY
+__global__ void gatherActiveTiles(DeviceWorldView buffers,
+                                 size_t tiles_y, size_t tiles_z,
+                                 size_t tile_count, size_t tile_phase);
+#endif
 __device__ CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase);
 __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
@@ -34,8 +39,8 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
 WorldState::WorldState(size_t n, size_t m, size_t k)
     : dimensions(checkedDimensions(n, m, k)), n_pad(0), m_pad(0), k_pad(0),
       world(nullptr), d_curr(nullptr), d_next(nullptr),
-      d_phase0_dirty_curr(nullptr), d_phase0_dirty_next(nullptr),
-      d_phase1_dirty_curr(nullptr), d_phase1_dirty_next(nullptr) {
+      d_active(nullptr), d_phase0_dirty_next(nullptr),
+      d_phase1_dirty_next(nullptr) {
     const auto max = std::numeric_limits<size_t>::max();
     n_pad = n + 2;
     m_pad = m + 2;
@@ -55,12 +60,12 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
     phase0_bytes = ((phase0_tiles + 31) / 32) * sizeof(uint32_t);
     phase1_bytes = ((phase1_tiles + 31) / 32) * sizeof(uint32_t);
 #endif
-    // Two world buffers plus two bitmaps per partition; check arithmetic first.
+    // Two worlds, one shared active map (largest grid), and two change maps.
     if (bytes > max / 2 || phase0_bytes > (max - 2 * bytes) / 2 ||
-        phase1_bytes > (max - 2 * bytes - 2 * phase0_bytes) / 2) {
+        phase1_bytes > max - 2 * bytes - 2 * phase0_bytes) {
         throw std::overflow_error("World and dirty bitmap allocation size overflows");
     }
-    const size_t required_bytes = 2 * bytes + 2 * phase0_bytes + 2 * phase1_bytes;
+    const size_t required_bytes = 2 * bytes + 2 * phase0_bytes + phase1_bytes;
     size_t free_bytes, total_bytes;
     CUDA_CHECK(cudaMemGetInfo(&free_bytes, &total_bytes));
     if (required_bytes > free_bytes) {
@@ -86,12 +91,10 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
         CUDA_CHECK(cudaMalloc(&d_curr, bytes));
         CUDA_CHECK(cudaMalloc(&d_next, bytes));
 #if DIRTY_STATE_EXCLUDE_ONLY
-        CUDA_CHECK(cudaMalloc(&d_phase0_dirty_curr, phase0_bytes));
+        CUDA_CHECK(cudaMalloc(&d_active, phase0_bytes));
         CUDA_CHECK(cudaMalloc(&d_phase0_dirty_next, phase0_bytes));
-        CUDA_CHECK(cudaMalloc(&d_phase1_dirty_curr, phase1_bytes));
         CUDA_CHECK(cudaMalloc(&d_phase1_dirty_next, phase1_bytes));
-        CUDA_CHECK(cudaMemset(d_phase0_dirty_curr, 0, phase0_bytes));
-        CUDA_CHECK(cudaMemset(d_phase1_dirty_curr, 0, phase1_bytes));
+        CUDA_CHECK(cudaMemset(d_active, 0, phase0_bytes));
         // Both partitions must run on their first visit, even if the other is static.
         CUDA_CHECK(cudaMemset(d_phase0_dirty_next, 0xff, phase0_bytes));
         CUDA_CHECK(cudaMemset(d_phase1_dirty_next, 0xff, phase1_bytes));
@@ -100,9 +103,8 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
         CUDA_CHECK(cudaMemcpy(d_next, initial.get(), bytes, cudaMemcpyHostToDevice));
     } catch (...) {
         // Construction failure does not run the destructor.
-        if (d_phase0_dirty_curr) cudaFree(d_phase0_dirty_curr);
+        if (d_active) cudaFree(d_active);
         if (d_phase0_dirty_next) cudaFree(d_phase0_dirty_next);
-        if (d_phase1_dirty_curr) cudaFree(d_phase1_dirty_curr);
         if (d_phase1_dirty_next) cudaFree(d_phase1_dirty_next);
         if (d_next) cudaFree(d_next);
         if (d_curr) cudaFree(d_curr);
@@ -117,9 +119,8 @@ WorldState::~WorldState() {
     delete[] world;
     cudaFree(d_curr);
     cudaFree(d_next);
-    cudaFree(d_phase0_dirty_curr);
+    cudaFree(d_active);
     cudaFree(d_phase0_dirty_next);
-    cudaFree(d_phase1_dirty_curr);
     cudaFree(d_phase1_dirty_next);
 }
 
@@ -153,8 +154,25 @@ size_t WorldState::paddedIndex(size_t x, size_t y, size_t z) const {
 
 DeviceWorldView WorldState::deviceView() const {
     return {d_curr, d_next, n_pad, m_pad, k_pad,
-            d_phase0_dirty_curr, d_phase0_dirty_next,
-            d_phase1_dirty_curr, d_phase1_dirty_next};
+            d_active, d_phase0_dirty_next, d_phase1_dirty_next};
+}
+
+void WorldState::updateActiveTiles(std::size_t tick) {
+#if DIRTY_STATE_EXCLUDE_ONLY
+    if (tick & 1) return; // Activity stays fixed for both x/z orientations.
+    const size_t tile_phase = (tick >> 1) & 1;
+    const size_t tiles_x = (n_pad - tile_phase) / 2;
+    const size_t tiles_y = (m_pad - tile_phase) / 2;
+    const size_t tiles_z = (k_pad - tile_phase) / 2;
+    const size_t tile_count = tiles_x * tiles_y * tiles_z;
+
+    const size_t blocks = 1 + (tile_count - 1) / THREADS_PER_BLOCK;
+    gatherActiveTiles<<<blocks, THREADS_PER_BLOCK>>>(
+        deviceView(), tiles_y, tiles_z, tile_count, tile_phase);
+    CUDA_CHECK(cudaGetLastError()); // Same stream orders the following update.
+#else
+    (void)tick;
+#endif
 }
 
 void WorldState::updateWorld(std::size_t tick, LUT& lut) {
@@ -176,8 +194,7 @@ void WorldState::updateWorld(std::size_t tick, LUT& lut) {
 }
 
 void WorldState::waitForTick() {
-    // Launches currently use the default stream. Move both launch and wait
-    // to a dedicated simulation stream before overlapping GPU rendering.
+    // Both kernels use the default simulation stream.
     CUDA_CHECK(cudaStreamSynchronize(nullptr));
 }
 
@@ -241,43 +258,73 @@ void DeviceWorldView::writeTile(int x, int y, int z,
 }
 
 __host__ __device__
-bool DeviceWorldView::checkTileDirty(size_t tile_phase, size_t tx, size_t ty,
-                                    size_t tz) const noexcept {
-    const size_t tiles_y = (m_pad - tile_phase) / 2;
-    const size_t tiles_z = (k_pad - tile_phase) / 2;
-    const size_t tile_id = (tx * tiles_y + ty) * tiles_z + tz;
-    const uint32_t* dirty_next = tile_phase == 0 ? phase0_dirty_next : phase1_dirty_next;
-    if (dirty_next[tile_id >> 5] & (1u << (tile_id & 31)))
-        return true;
-
-    const size_t prev_phase = tile_phase ^ 1;
-    const size_t prev_tiles_x = (n_pad - prev_phase) / 2;
-    const size_t prev_tiles_y = (m_pad - prev_phase) / 2;
-    const size_t prev_tiles_z = (k_pad - prev_phase) / 2;
-    const uint32_t* prev_phase_dirty = tile_phase == 0 ? phase1_dirty_next : phase0_dirty_next;
-    // Phase 0 gathers offsets {-1,0}; phase 1 gathers {0,1} on each axis.
-    const int offset = tile_phase == 0 ? -1 : 0;
-    for (int dx = 0; dx < 2; ++dx) {
-        const int px = static_cast<int>(tx) + offset + dx;
-        if (px < 0 || size_t(px) >= prev_tiles_x) continue;
-        for (int dy = 0; dy < 2; ++dy) {
-            const int py = static_cast<int>(ty) + offset + dy;
-            if (py < 0 || size_t(py) >= prev_tiles_y) continue;
-            for (int dz = 0; dz < 2; ++dz) {
-                const int pz = static_cast<int>(tz) + offset + dz;
-                if (pz < 0 || size_t(pz) >= prev_tiles_z) continue;
-                const size_t prev_id = (size_t(px) * prev_tiles_y + size_t(py)) * prev_tiles_z + size_t(pz);
-                if (prev_phase_dirty[prev_id >> 5] & (1u << (prev_id & 31)))
-                    return true;
-            }
-        }
-    }
-    return false;
+bool DeviceWorldView::checkTileDirty(size_t tile_id) const noexcept {
+    return (active[tile_id >> 5] & (1u << (tile_id & 31))) != 0;
 }
 
 // GPU update kernel and state transition.
 
 namespace {
+
+#if DIRTY_STATE_EXCLUDE_ONLY
+// Both change maps stay read-only during gathering. The following update
+// kernel may overwrite this partition's old changes after activity is frozen.
+__device__ bool gatherTileActivity(DeviceWorldView buffers, size_t tile_phase,
+                                  size_t tx, size_t ty, size_t tz) {
+    const size_t tiles_y = (buffers.m_pad - tile_phase) / 2;
+    const size_t tiles_z = (buffers.k_pad - tile_phase) / 2;
+    const size_t tile_id = (tx * tiles_y + ty) * tiles_z + tz;
+    const uint32_t* dirty_next = tile_phase == 0 ? buffers.phase0_dirty_next : buffers.phase1_dirty_next;
+    if (dirty_next[tile_id >> 5] & (1u << (tile_id & 31)))
+        return true;
+
+    const size_t prev_phase = tile_phase ^ 1;
+    const size_t prev_tiles_x = (buffers.n_pad - prev_phase) / 2;
+    const size_t prev_tiles_y = (buffers.m_pad - prev_phase) / 2;
+    const size_t prev_tiles_z = (buffers.k_pad - prev_phase) / 2;
+    const uint32_t* prev_phase_dirty = tile_phase == 0 ? buffers.phase1_dirty_next : buffers.phase0_dirty_next;
+    // Phase 0 gathers {-1,0}; phase 1 gathers {0,1} on each axis.
+    // At the shell, clamp the missing neighbor to its valid overlapping partner.
+    // Duplicating that bit does not change whether any neighbor is dirty.
+    const int offset = tile_phase == 0 ? -1 : 0;
+    const size_t stride_x = prev_tiles_y * prev_tiles_z;
+    const size_t stride_y = prev_tiles_z;
+    const size_t x0 = size_t(max(int(tx) + offset, 0)) * stride_x;
+    const size_t x1 = min(tx + tile_phase, prev_tiles_x - 1) * stride_x;
+    const size_t y0 = size_t(max(int(ty) + offset, 0)) * stride_y;
+    const size_t y1 = min(ty + tile_phase, prev_tiles_y - 1) * stride_y;
+    const size_t z0 = size_t(max(int(tz) + offset, 0));
+    const size_t z1 = min(tz + tile_phase, prev_tiles_z - 1);
+    const size_t neighbor_ids[8] = {
+        x0 + y0 + z0, x0 + y0 + z1,
+        x0 + y1 + z0, x0 + y1 + z1,
+        x1 + y0 + z0, x1 + y0 + z1,
+        x1 + y1 + z0, x1 + y1 + z1
+    };
+
+    #pragma unroll
+    for (unsigned i = 0; i < 8; ++i) {
+        const size_t id = neighbor_ids[i];
+        if (prev_phase_dirty[id >> 5] & (1u << (id & 31)))
+            return true;
+    }
+    return false;
+}
+
+__global__ void gatherActiveTiles(DeviceWorldView buffers,
+                                 size_t tiles_y, size_t tiles_z,
+                                 size_t tile_count, size_t tile_phase) {
+    const size_t tile_id = size_t(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (tile_id >= tile_count) return;
+    const size_t tz = tile_id % tiles_z;
+    const size_t ty = (tile_id / tiles_z) % tiles_y;
+    const size_t tx = tile_id / (tiles_z * tiles_y);
+    const bool active = gatherTileActivity(buffers, tile_phase, tx, ty, tz);
+    const unsigned ballot = __ballot_sync(0xffffffffu, active);
+    if ((threadIdx.x & 31u) == 0)
+        buffers.active[tile_id >> 5] = ballot;
+}
+#endif
 
 __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
@@ -297,20 +344,9 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
     const auto z = static_cast<int>(2 * tz + tile_phase) - 1;
 
 #if DIRTY_STATE_EXCLUDE_ONLY
-    uint32_t* dirty_curr = tile_phase == 0 ? buffers.phase0_dirty_curr : buffers.phase1_dirty_curr;
     uint32_t* dirty_next = tile_phase == 0 ? buffers.phase0_dirty_next : buffers.phase1_dirty_next;
     const size_t word_idx = tile_id >> 5;
-    const unsigned bit_idx = tile_id & 31;
-    bool active;
-    if (face_phase == 0) {
-        active = buffers.checkTileDirty(tile_phase, tx, ty, tz);
-        // Freeze activity before x overwrites this partition's previous changes.
-        const unsigned active_ballot = __ballot_sync(0xffffffffu, active);
-        if ((threadIdx.x & 31u) == 0)
-            dirty_curr[word_idx] = active_ballot;
-    } else {
-        active = (dirty_curr[word_idx] & (1u << bit_idx)) != 0;
-    }
+    const bool active = buffers.checkTileDirty(tile_id);
 #endif
 
     const CubeTile tile = buffers.readTile(x, y, z);

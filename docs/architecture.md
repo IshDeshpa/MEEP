@@ -1,6 +1,6 @@
 # MEEP architecture working model
 
-Current discussion: 2026-11-09. This is the project's living architecture note.
+Current discussion: 2026-11-10. This is the project's living architecture note.
 Revise the relevant sections as decisions change; replace superseded proposals
 rather than appending conversation history. Keep confirmed requirements,
 implemented behavior, proposals, and unresolved questions distinct.
@@ -44,8 +44,10 @@ The status of probabilistic transitions should be confirmed separately.
   calls, and writes the result. BLOCK immobility belongs entirely to the LUT.
   Both phases cover every visible cell. The caller waits for completion and
   calls swapBuffers before submitting the next tick.
-- `src/main.cpp`: the CPU ticker submits a tick, waits for stream completion,
-  and sleeps until its requested deadline. main does not yet start the ticker.
+- `src/main.cpp`: on every even tick (including tick 0), the CPU ticker calls
+  updateActiveTiles before updateWorld. Both launch into the same default CUDA
+  stream; the ticker waits only after updateWorld, swaps buffers, and sleeps
+  until its requested deadline. main does not yet start the ticker.
 - CUDA calls use the teammate's CPU-facing src/extra/check.hpp declaration
   and src/extra/check.cu implementation; failure paths release partially
   allocated buffers. GPU completion errors are checked by waitForTick.
@@ -102,18 +104,34 @@ tiles; every tile still loads and writes all eight Cells. Set the macro to 0
 for the full-update baseline, which allocates and accesses no dirty bitmaps.
 No dirty-scheduling performance measurements have been made.
 
-Four uint32 bitmaps hold one bit per tile: each partition's dirty_curr freezes
-activity for its x/z pair, while dirty_next records changes. Both next maps
-start active so each partition gets its first complete visit. On x, each tile
-gathers its own previous next bit plus up to eight other-partition next bits.
-A warp ballot saves activity into its curr map before the old next word is
-overwritten. On z, activity comes from curr. Change ballots overwrite next on
-x and OR into next on z. One lane owns each 32-tile word, blocks are multiples
-of 32, and out-of-range threads return; exited tail lanes contribute zero.
-No pre-clear, bitmap swap, separate activity kernel, or atomic write is needed.
-World-buffer roles still swap after every completed tick. The view carries all
-three padded dimensions to bound the other partition's potentially different
-tile grid. Allocation checks and cleanup include all four bitmaps.
+Three uint32 bitmaps hold one bit per tile: a shared active map freezes
+activity for the current partition's x/z pair, while phase0_dirty_next and
+phase1_dirty_next record each partition's changes. Active storage is sized for
+the larger partition-0 grid. Both next maps start active so each partition gets
+its first complete visit.
+
+WorldState::updateActiveTiles launches a separate one-thread-per-tile gather
+kernel before updateWorld on every even tick, including tick 0. At the 1-to-0
+partition change, each phase-0 tile ORs its own phase0_dirty_next bit with up to
+eight overlapping phase1_dirty_next bits; the 0-to-1 change does the symmetric
+gather. Two offsets per axis form an explicit eight-ID list via tile-grid
+strides, scanned with an unrolled loop that returns on the first dirty bit.
+At the shell, missing neighbors clamp to their valid overlapping partner;
+duplicate bits do not change whether any neighbor is dirty.
+The result overwrites active and stays fixed through both orientations.
+checkTileDirty only reads that active bit; updateTile no longer gathers activity.
+
+The gather and update kernels run sequentially in the same default stream.
+There is no CPU synchronization between them, but the full gather completes
+before any tile update starts. Batching and overlapping kernels are deferred.
+Both change maps are read-only during gathering. In updateTile, change ballots
+overwrite the current partition's next map on x and OR into it on z. One lane
+owns each 32-tile word, blocks are multiples of 32, and out-of-range threads
+return; exited tail lanes contribute zero. No pre-clear, bitmap swap, or atomic
+write is needed. World-buffer roles still swap after every completed tick.
+The view carries all three padded dimensions to bound the other partition's
+potentially different tile grid. Allocation checks and cleanup include all
+three bitmaps.
 
 CubeTile equality compares material IDs only using a masked 64-bit XOR; state
 nibbles are ignored. Fixed-size memcpy avoids aliasing casts, and the mask is
@@ -345,11 +363,13 @@ not a world store shared with the CPU.
 
 ## Kernel parameters and class ownership
 
-The CPU member `WorldState::updateWorld(tick)` owns launch preparation.
-It passes a fresh `deviceView()` by value, along with tiles_y/tiles_z,
-tile_count, partition phase, and face phase. DeviceWorldView contains current
-and next device pointers, padded x/y/z dimensions, and four dirty bitmap
-pointers. The y/z dimensions provide the storage strides.
+The CPU members `WorldState::updateActiveTiles(tick)` and
+`WorldState::updateWorld(tick, lut)` prepare their kernel launches.
+They pass a fresh `deviceView()` by value, along with tiles_y/tiles_z,
+tile_count, partition phase, and (for the update) LUT view and face phase.
+DeviceWorldView contains current and next device pointers, padded x/y/z
+dimensions, and three bitmap pointers: shared active and both partition change
+maps. The y/z dimensions provide the storage strides.
 This copies metadata and pointer values, not world contents. Reacquire a view
 after buffer roles change; an existing view retains its captured pointers.
 

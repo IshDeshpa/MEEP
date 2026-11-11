@@ -25,18 +25,22 @@ buffers start with AIR inside and BLOCK outside. Tile access uses visible-world
 coordinates through DeviceWorldView; padding and strides are handled internally.
 The renderer's signed coordinate access also supports the padded halo.
 Face types, packing helpers, binary LUT loading, and device lookup live in
-`src/state/lut.hpp/cu`. World ticks use the LUT; `worldTick` waits for completion
-and calls `swapBuffers`. Scene loading, rendering integration, and starting the
-ticker from main are still being completed. See the [architecture model](docs/architecture.md).
+`src/state/lut.hpp/cu`. Before each partition's x/z pair, `worldTick` submits
+`updateActiveTiles`, then `updateWorld` in the same stream. It waits for tick
+completion and calls `swapBuffers`. Scene loading, rendering integration, and
+starting the ticker from main are still being completed. See the [architecture model](docs/architecture.md).
 
 `make -C src run-world_blank` loads `src/state/test1.bin` and checks seven GPU ticks
 on four blank worlds, including 100x100x100. It verifies AIR interiors, BLOCK
 padding, state bits, output coverage, LUT upload, and buffer parity using
-`updateWorld`, `waitForTick`, and `swapBuffers`. Supply another LUT with
-`ARGS=/absolute/path/to/rules.bin`. Set `CUDA_HOME` for a nonstandard toolkit.
-`DIRTY_STATE_EXCLUDE_ONLY` defaults to 1 in src/config.hpp. Four packed bitmaps
-track phase activity and changes; sleeping tiles still copy into the next world
-buffer. Set it to 0 for full updates without bitmap allocation or access.
+`updateActiveTiles` (even ticks), `updateWorld`, `waitForTick`, and `swapBuffers`.
+Supply another LUT with `ARGS=/absolute/path/to/rules.bin`. Set `CUDA_HOME` for a nonstandard toolkit.
+`DIRTY_STATE_EXCLUDE_ONLY` defaults to 1 in src/config.hpp. Three packed bitmaps
+hold shared activity and each partition's changes. A separate one-thread-per-tile
+kernel rebuilds activity on every even tick; both orientations reuse it.
+The activity and update kernels run sequentially with no CPU wait between them;
+sleeping tiles still copy into the next world buffer. Set the macro to 0 for full
+updates without bitmap allocation or access.
 `make -C src run-world_dirty` checks material-only tile equality and 20 synthetic
 world/rule cases against a full CPU reference, including exact activity/change
 bits, boundary overlap, sleeping carry-forward, and buffer parity. Dirty timing

@@ -31,6 +31,8 @@ void worldTick(WorldState& world, LUT& lut) {
     const auto period = std::chrono::milliseconds(
         static_cast<std::uint16_t>(tick_rate));
 
+    if ((tick_counter & 1) == 0)
+      world.updateActiveTiles(tick_counter);
     world.updateWorld(tick_counter, lut);
     world.waitForTick();
     world.swapBuffers();
