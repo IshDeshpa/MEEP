@@ -29,12 +29,19 @@ Face types, packing helpers, binary LUT loading, and device lookup live in
 and calls `swapBuffers`. Scene loading, rendering integration, and starting the
 ticker from main are still being completed. See the [architecture model](docs/architecture.md).
 
-`make -C src run-world_blank` loads `src/state/la.bin` and checks seven GPU ticks
+`make -C src run-world_blank` loads `src/state/test1.bin` and checks seven GPU ticks
 on four blank worlds, including 100x100x100. It verifies AIR interiors, BLOCK
 padding, state bits, output coverage, LUT upload, and buffer parity using
 `updateWorld`, `waitForTick`, and `swapBuffers`. Supply another LUT with
 `ARGS=/absolute/path/to/rules.bin`. Set `CUDA_HOME` for a nonstandard toolkit.
-The older `world_padding` test still needs its call sites adapted to the LUT API.
+`DIRTY_STATE_EXCLUDE_ONLY` defaults to 1 in src/config.hpp. Four packed bitmaps
+track phase activity and changes; sleeping tiles still copy into the next world
+buffer. Set it to 0 for full updates without bitmap allocation or access.
+`make -C src run-world_dirty` checks material-only tile equality and 20 synthetic
+world/rule cases against a full CPU reference, including exact activity/change
+bits, boundary overlap, sleeping carry-forward, and buffer parity. Dirty timing
+has not been measured. The older `world_padding` test still needs its call sites
+adapted to the LUT API.
 
 ## CUDA experiment
 

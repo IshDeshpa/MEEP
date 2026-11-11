@@ -39,6 +39,7 @@ struct WorldState {
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
   Cell* d_next;
+  // curr: frozen activity for an x/z pair; next: changes from that pair.
   uint32_t* d_phase0_dirty_curr;
   uint32_t* d_phase0_dirty_next;
   uint32_t* d_phase1_dirty_curr;
@@ -89,6 +90,7 @@ struct WorldState {
 struct alignas(8) CubeTile {
   Cell cells[8];
   
+  // Equality compares material IDs only; reserved state bits are ignored.
   MEEP_HOST_DEVICE
   bool operator==(const CubeTile& other) const noexcept;
   MEEP_HOST_DEVICE
@@ -102,11 +104,15 @@ static_assert(sizeof(CubeTile) == 8 * sizeof(Cell));
 struct DeviceWorldView {
   const Cell* curr;
   Cell* next;
-  std::size_t m_pad, k_pad;
+  std::size_t n_pad, m_pad, k_pad;
   uint32_t* phase0_dirty_curr;
   uint32_t* phase0_dirty_next;
   uint32_t* phase1_dirty_curr;
   uint32_t* phase1_dirty_next;
+
+  // Own pending changes OR changes in up to eight overlapping other-phase tiles.
+  MEEP_HOST_DEVICE
+  bool checkTileDirty(size_t tile_phase, size_t tx, size_t ty, size_t tz) const noexcept;
 
   // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
   MEEP_HOST_DEVICE

@@ -9,6 +9,7 @@
 #include <thread>
 
 std::size_t tick_counter = 0;
+std::chrono::steady_clock::duration recent_tick_times[600];
 
 // TODO: variable tick rate
 enum TickRate : std::uint16_t { // Measured in ms per tick
@@ -36,6 +37,8 @@ void worldTick(WorldState& world, LUT& lut) {
     ++tick_counter;
 
     if (period.count() != 0) {
+      const auto elapsed = Clock::now() - start;
+      recent_tick_times[tick_counter % std::size(recent_tick_times)] = elapsed;
       std::this_thread::sleep_until(start + period);
     }
   }

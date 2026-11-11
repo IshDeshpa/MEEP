@@ -56,11 +56,19 @@ void checkWorld(size_t n, size_t m, size_t k, const std::string& file_path,
     constexpr size_t ticks = 7; // Both orientations/partitions, odd final parity.
     const size_t count = (n + 2) * (m + 2) * (k + 2);
     const size_t buffer_bytes = count * sizeof(Cell);
-    const size_t required_bytes = FACE_LUT_SIZE + 2 * buffer_bytes;
+    size_t bitmap_bytes = 0;
+#if DIRTY_STATE_EXCLUDE_ONLY
+    for (size_t phase = 0; phase < 2; ++phase) {
+        const size_t tiles = ((n + 2 - phase) / 2) * ((m + 2 - phase) / 2) * ((k + 2 - phase) / 2);
+        bitmap_bytes += 2 * ((tiles + 31) / 32) * sizeof(uint32_t);
+    }
+#endif
+    const size_t required_bytes = FACE_LUT_SIZE + 2 * buffer_bytes + bitmap_bytes;
     size_t free_bytes = 0, total_bytes = 0;
     CUDA_CHECK(cudaMemGetInfo(&free_bytes, &total_bytes));
     std::cout << n << 'x' << m << 'x' << k << ": LUT=" << FACE_LUT_SIZE
               << ", two buffers=" << 2 * buffer_bytes
+              << ", bitmaps=" << bitmap_bytes
               << ", total required=" << required_bytes
               << ", free=" << free_bytes << ", used=" << total_bytes - free_bytes
               << " bytes\n";
@@ -116,7 +124,7 @@ int main(int argc, char* argv[]) {
         require(argc <= 2, "Usage: world_blank [LUT path]");
         const std::filesystem::path file_path = argc == 2
             ? std::filesystem::path(argv[1])
-            : std::filesystem::path(MEEP_SRC_DIR) / "state/la.bin";
+            : std::filesystem::path(MEEP_SRC_DIR) / "state/test1.bin";
         const auto rules = readRules(file_path);
         const size_t sizes[][3] = {{1, 1, 1}, {3, 4, 5}, {10, 14, 18}, {100, 100, 100}};
         for (const auto& size : sizes)

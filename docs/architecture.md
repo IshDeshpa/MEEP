@@ -1,6 +1,6 @@
 # MEEP architecture working model
 
-Current discussion: 2026-11-05. This is the project's living architecture note.
+Current discussion: 2026-11-09. This is the project's living architecture note.
 Revise the relevant sections as decisions change; replace superseded proposals
 rather than appending conversation history. Keep confirmed requirements,
 implemented behavior, proposals, and unresolved questions distinct.
@@ -96,9 +96,42 @@ per face is another valid mapping, to compare later if needed.
 
 ### Tile pruning: design choices
 
-Pruning is proposed, not implemented or measured. **Decision: use warp ballots
-for packed change flags when each partition writes its own tile map.** World
-update, propagation, and dispatch alternatives below remain open.
+Implemented in src/state/state.hpp/cu: DIRTY_STATE_EXCLUDE_ONLY defaults to 1.
+The full-grid, double-buffered kernel skips only stateTransition for sleeping
+tiles; every tile still loads and writes all eight Cells. Set the macro to 0
+for the full-update baseline, which allocates and accesses no dirty bitmaps.
+No dirty-scheduling performance measurements have been made.
+
+Four uint32 bitmaps hold one bit per tile: each partition's dirty_curr freezes
+activity for its x/z pair, while dirty_next records changes. Both next maps
+start active so each partition gets its first complete visit. On x, each tile
+gathers its own previous next bit plus up to eight other-partition next bits.
+A warp ballot saves activity into its curr map before the old next word is
+overwritten. On z, activity comes from curr. Change ballots overwrite next on
+x and OR into next on z. One lane owns each 32-tile word, blocks are multiples
+of 32, and out-of-range threads return; exited tail lanes contribute zero.
+No pre-clear, bitmap swap, separate activity kernel, or atomic write is needed.
+World-buffer roles still swap after every completed tick. The view carries all
+three padded dimensions to bound the other partition's potentially different
+tile grid. Allocation checks and cleanup include all four bitmaps.
+
+CubeTile equality compares material IDs only using a masked 64-bit XOR; state
+nibbles are ignored. Fixed-size memcpy avoids aliasing casts, and the mask is
+derived from Cell's bitfield layout. CUDA 12.6 sm_75 output uses register mask
+operations with no memcpy calls. This is code-generation evidence, not a timing
+comparison. State remains copied unchanged by movement in the current LUT API;
+future rule-relevant state changes need explicit wakeups.
+
+Validation on RTX 2070 / CUDA 12.6: run-world_dirty checks 32768 equality cases
+on CPU/GPU and 32 ticks in each of 20 world/rule cases against an independent
+full-update CPU reference. It checks actual change/activity maps, unused tail
+bits, boundary overlaps, sleeping carry-forward with poisoned destinations,
+state preservation, and world-buffer parity. Synthetic identity, gravity,
+reversible-swap, and cyclic rules isolate scheduling from material decisions.
+Both dirty-enabled and full-update builds pass; Compute Sanitizer memcheck
+reports zero errors/leaks and synccheck reports zero errors for the dirty build.
+The blank-world regression also passes. Scatter, compact dispatch, in-place
+updates, and the storage reductions discussed below remain alternatives.
 
 **Activity contract.** For deterministic tile-local rules, initialize both
 partitions active. Keep a fixed activity set through each partition's x/z pair;
@@ -150,8 +183,8 @@ cannot synchronize the grid.
   update. Frozen input maps avoid atomic writes during gathering.
 
 Own-map ballot output: consecutive tile IDs, 1D blocks divisible by 32, and one
-lane storing each complete `uint32_t` word. All lanes reach `__ballot_sync`;
-sleeping/invalid tiles contribute zero. Unique word ownership allows plain
+lane storing each complete `uint32_t` word. All non-exited lanes reach
+__ballot_sync; sleeping tiles contribute zero and invalid tail threads exit. Unique word ownership allows plain
 stores without pre-clear. Overwrite change words on x, then OR in z ballots in
 the ordered z kernel. Preserve older activity inputs until consumed; pending
 work and change flags have different lifetimes even if storage is reused.
@@ -209,7 +242,7 @@ access, but its call sites and identity-rule fixture need adaptation to the LUT
 API before that target can run again.
 
 The blank-world regression is `make -C src run-world_blank`, using the actual
-`src/state/la.bin` by default (override with `ARGS=/absolute/path/to/rules.bin`).
+`src/state/test1.bin` by default (override with `ARGS=/absolute/path/to/rules.bin`).
 It checks all AIR/BLOCK reference faces, exact LUT upload, both initial GPU
 buffers, and seven ticks on 1x1x1, 3x4x5, 10x14x18, and 100x100x100 worlds.
 Destination interiors are poisoned before each tick to expose missing writes;
@@ -315,7 +348,8 @@ not a world store shared with the CPU.
 The CPU member `WorldState::updateWorld(tick)` owns launch preparation.
 It passes a fresh `deviceView()` by value, along with tiles_y/tiles_z,
 tile_count, partition phase, and face phase. DeviceWorldView contains current
-and next device pointers and the padded y/z dimensions used as strides.
+and next device pointers, padded x/y/z dimensions, and four dirty bitmap
+pointers. The y/z dimensions provide the storage strides.
 This copies metadata and pointer values, not world contents. Reacquire a view
 after buffer roles change; an existing view retains its captured pointers.
 
