@@ -28,6 +28,7 @@ void worldToClipLaunch(){
   // Allocate 1 extra vert per vert to account for creating new vert in the case of clipping
   // verts->size() = 2 * (num_entities * 8 verts)
   r.tris = std::make_unique<DeviceBuffer<Tri>>(2 * (num_entities * HostCube::numTris()));
+  CUDA_CHECK(cudaMemset(r.tris->data(), 0xFF, 2 * (num_entities * HostCube::numTris()) * sizeof(Tri)));
   r.verts = std::make_unique<DeviceBuffer<Vertex>>(2 * (num_entities * HostCube::numVerts()));
 
   
@@ -73,7 +74,7 @@ __global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tr
 
   uint32_t ofs = ind*vert_ct*2;
   for(uint8_t i=0; i<tri_ct; i++){
-    tris[ind*tri_ct+i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs); // add an offset to all three vert inds
+    tris[ind*tri_ct*2+i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs); // add an offset to all three vert inds
   }
 }
 
