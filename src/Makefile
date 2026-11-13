@@ -3,7 +3,7 @@ GLM_DIR  := glm
 OBJ_DIR  := build
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state extra
+MODULES  := render state extra window
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
 # DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into
@@ -16,6 +16,8 @@ endif
 DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"' -DMEEP_DEBUG=$(DEBUG)
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
+# libraries go after the objects on the link line, so they are kept by the linker
+LDLIBS   := -lX11
 TARGET   := main
 ARGS     ?=
 SANITIZER ?=
@@ -149,7 +151,7 @@ DEPS     := $(OBJS:.o=.d) $(TEST_CPP_OBJS:.o=.d) $(TEST_CU_OBJS:.o=.d)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(LINK) -o $@ $^
+	$(LINK) -o $@ $^ $(LDLIBS)
 
 # -MMD and -MP track header deps
 $(OBJ_DIR)/%.o: %.cpp
@@ -163,10 +165,10 @@ $(OBJ_DIR)/%.cu.o: %.cu
 # `make <test-name>` builds a test source into build/tests/<test-name>
 # (linked against all non-main sources); `make run-<test-name>` also runs it.
 $(TEST_CPP_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
-	$(TEST_LINK) -o $@ $^
+	$(TEST_LINK) -o $@ $^ $(LDLIBS)
 
 $(TEST_CU_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.cu.o $(LIB_OBJS)
-	$(TEST_LINK) -o $@ $^
+	$(TEST_LINK) -o $@ $^ $(LDLIBS)
 
 $(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
 
