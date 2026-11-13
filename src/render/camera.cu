@@ -10,7 +10,7 @@ Camera &Camera::instance(){
 __constant__ DeviceScreen::Data DEVICE_SCREEN;
 
 DeviceScreen &DeviceScreen::instance(){
-  static DeviceScreen screen(CAMERA_SCREEN_WIDTH, CAMERA_SCREEN_HEIGHT);
+  static DeviceScreen screen(SCREEN_WIDTH, SCREEN_HEIGHT);
 
   const Data &data = screen;
   CUDA_CHECK(cudaMemcpyToSymbol(DEVICE_SCREEN, &data, sizeof(Data)));

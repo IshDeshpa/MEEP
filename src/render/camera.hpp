@@ -79,7 +79,7 @@ public:
   const double B = (-(2 * Z_FAR * Z_NEAR) / (Z_FAR - Z_NEAR));
   const double S = (1.0 / std::tan(glm::radians(FOV_DEG) / 2.0));
 
-  const double ASPECT = double(CAMERA_SCREEN_WIDTH) / CAMERA_SCREEN_HEIGHT;
+  const double ASPECT = double(SCREEN_WIDTH) / SCREEN_HEIGHT;
 
   const glm::dmat4x4 P = makeP(A, B, S, ASPECT);
 
@@ -97,5 +97,5 @@ public:
   }
 
 private:
-  Camera() : HostScreen(CAMERA_SCREEN_WIDTH, CAMERA_SCREEN_HEIGHT) {}
+  Camera() : HostScreen(SCREEN_WIDTH, SCREEN_HEIGHT) {}
 };
