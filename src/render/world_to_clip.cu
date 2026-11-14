@@ -73,8 +73,10 @@ __global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tr
   }
 
   uint32_t ofs = ind*vert_ct*2;
-  for(uint8_t i=0; i<tri_ct; i++){
-    tris[ind*tri_ct*2+i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs); // add an offset to all three vert inds
-  }
+  for (uint8_t i = 0; i < tri_ct; i++) {
+    if (ent.triMask[i]) {
+        tris[ind * tri_ct * 2 + i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs);
+    }
+}
 }
 

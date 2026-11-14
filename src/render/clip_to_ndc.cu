@@ -24,7 +24,10 @@ __global__ void clipToNDC(Vertex *verts, std::size_t verts_sz){
 
   Vertex::value_type max = std::numeric_limits<Vertex::value_type>().max();
   if(verts[ind].w == max) return; // if w is already max it's cooked and we gotta skip this vert
-  if(verts[ind].w <= 0) verts[ind] = Vertex(max, max, max, max); // this should not be true ever if we've culled
+  if(verts[ind].w <= 0) {
+    verts[ind] = Vertex(max, max, max, max); // this should not be true ever if we've culled
+    return;
+  }
 
   verts[ind] = verts[ind]/verts[ind].w;
 }
@@ -38,10 +41,14 @@ __global__ void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_sz
   Tri::value_type max_tri = std::numeric_limits<Tri::value_type>().max();
 
   if(tris[ind].x == max_tri) return;
+  Tri &t = tris[ind];
+  // at this pt if something is invalid, just throw the triangle away
+  if (t.x == max_tri || t.y == max_tri || t.z == max_tri)
+    continue;
 
-  Vertex a = verts[tris[ind].x]; if(a.w == max_vert) return;
-  Vertex b = verts[tris[ind].y]; if(b.w == max_vert) return;
-  Vertex c = verts[tris[ind].z]; if(c.w == max_vert) return;
+  Vertex a = verts[t.x];
+  Vertex b = verts[t.y];
+  Vertex c = verts[t.z];
 
   double area_2d = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
   if(area_2d <= 0){
