@@ -15,6 +15,8 @@ public:
   std::unique_ptr<DeviceBuffer<Vertex>> verts;
   std::unique_ptr<DeviceBuffer<Tri>> tris;
 
+  std::unique_ptr<DeviceBuffer<Vertex2D>> verts2d;
+
   // Global singleton, built on first use
   static Renderer &instance();
 
@@ -55,7 +57,7 @@ MEEP_GLOBAL void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_s
 // maps 3d NDC coords to 2d screen coords
 // probably does more clipping too
 void ndcToScreenLaunch();
-MEEP_GLOBAL void ndcToScreen(const Vertex *verts, Vertex2D *verts2d);
+MEEP_GLOBAL void ndcToScreen(const Vertex *verts, Vertex2D *verts2d, std::size_t count);
 
 // 6. Rasterize the screen (assign colors to pixels)
 // Turn verts into pixels + depth buffer in the on-gpu DeviceScreen, and then cudaMemcpy over to the on-cpu HostScreen

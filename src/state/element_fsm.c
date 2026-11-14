@@ -1,1 +1,0 @@
-// potential c array for the big fsm, will work on some script to make the fsm based on the state diagram drawn

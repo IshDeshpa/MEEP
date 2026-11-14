@@ -17,4 +17,6 @@ int main() {
     stateToWorldLaunch(world);
     worldToClipLaunch();
     clipVertsLaunch();
+    clipToNDCLaunch();
+    ndcToScreenLaunch();
 }
