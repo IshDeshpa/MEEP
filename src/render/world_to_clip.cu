@@ -1,4 +1,5 @@
 #include "extra/cuda_raii.hpp"
+#include "render.hpp"
 #include "render/cell.hpp"
 #include "render/render.hpp"
 #include "state/state.hpp"
@@ -27,21 +28,21 @@ void worldToClipLaunch(){
   // 8 verts per entity
   // Allocate 1 extra vert per vert to account for creating new vert in the case of clipping
   // verts->size() = 2 * (num_entities * 8 verts)
-  r.tris = std::make_unique<DeviceBuffer<Tri>>(2 * (num_entities * HostCube::numTris()));
+  r.tris = std::make_unique<DeviceBuffer<Tri>>(2 * (num_entities * HostCube::numTris()));  
   CUDA_CHECK(cudaMemset(r.tris->data(), 0xFF, 2 * (num_entities * HostCube::numTris()) * sizeof(Tri)));
-  r.verts = std::make_unique<DeviceBuffer<Vertex>>(2 * (num_entities * HostCube::numVerts()));
 
-  
+  r.verts = std::make_unique<DeviceBuffer<Vertex>>(num_entities * VERTS_PER_CUBE);
+  CUDA_CHECK(cudaMemset(r.verts->data(), 0, r.verts->size() * sizeof(Vertex)));
 
   generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
   cudaDeviceSynchronize();
 
 #if (MEEP_DEBUG == 1)
-  std::vector<Vertex> host_verts(2 * (num_entities * HostCube::numVerts()));
-  CUDA_CHECK(cudaMemcpy(host_verts.data(), r.verts->data(), 2 * (num_entities * HostCube::numVerts()) * sizeof(Vertex), cudaMemcpyDeviceToHost));
+  std::vector<Vertex> host_verts(r.verts->size());
+  CUDA_CHECK(cudaMemcpy(host_verts.data(), r.verts->data(), r.verts->size() * sizeof(Vertex), cudaMemcpyDeviceToHost));
 
   printf("verts: ");
-  for(std::size_t i=0; i<2 * (num_entities * HostCube::numVerts()); i++){
+  for(std::size_t i=0; i<r.verts->size(); i++){
     printf("%f %f %f %f \n", host_verts[i].x, host_verts[i].y, host_verts[i].z, host_verts[i].w);
   }
 
@@ -68,11 +69,11 @@ __global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tr
   glm::dmat4x4 t = vp * ent.transform;
 
   for(uint8_t i=0; i<vert_ct; i++){
-    verts[ind*vert_ct*2 + i] = t * g.verts[i]; // fill in the actual 8 verts
+    verts[ind * VERTS_PER_CUBE + i] = t * g.verts[i]; // fill in the actual 8 verts
     // we leave 8 spots empty in case we need to create more verts for clipping purposes
   }
 
-  uint32_t ofs = ind*vert_ct*2;
+  uint32_t ofs = ind * VERTS_PER_CUBE;
   for (uint8_t i = 0; i < tri_ct; i++) {
     if (ent.triMask[i]) {
         tris[ind * tri_ct * 2 + i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs);

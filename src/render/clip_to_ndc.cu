@@ -41,14 +41,16 @@ __global__ void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_sz
   Tri::value_type max_tri = std::numeric_limits<Tri::value_type>().max();
 
   if(tris[ind].x == max_tri) return;
-  Tri &t = tris[ind];
-  // at this pt if something is invalid, just throw the triangle away
-  if (t.x == max_tri || t.y == max_tri || t.z == max_tri)
-    continue;
 
-  Vertex a = verts[t.x];
-  Vertex b = verts[t.y];
-  Vertex c = verts[t.z];
+  Vertex a = verts[tris[ind].x];
+  Vertex b = verts[tris[ind].y];
+  Vertex c = verts[tris[ind].z];
+
+  // at this pt if something is invalid, just throw the triangle away
+  if (a.w == max_vert || b.w == max_vert || c.w == max_vert) {
+      tris[ind] = Tri(max_tri, max_tri, max_tri);
+      return;
+  }
 
   double area_2d = (b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y);
   if(area_2d <= 0){

@@ -6,6 +6,9 @@
 #include <cstddef>
 #include <memory>
 
+inline constexpr std::size_t MAX_NEW_VERTS = 12;
+inline constexpr std::size_t VERTS_PER_CUBE = 8 + MAX_NEW_VERTS;
+
 class Renderer{
 public:
   const DeviceCube *device_cube;

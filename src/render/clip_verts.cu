@@ -49,7 +49,6 @@ MEEP_DEVICE std::size_t searchEdgeCache(EdgeCacheEntry *cache, std::size_t cache
     return std::numeric_limits<std::size_t>::max();
 }
 
-#define MAX_NEW_VERTS 8
 
 MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entities) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -59,7 +58,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
     std::size_t vert_ct = DEVICE_CUBE.vertexCount;
 
     std::size_t t_base = idx * tri_ct * 2; // 2 for extra space
-    std::size_t v_base = idx * vert_ct * 2;
+    std::size_t v_base = idx * VERTS_PER_CUBE;
 
     Tri::value_type max = std::numeric_limits<Tri::value_type>::max();
 
@@ -72,10 +71,13 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
     for (std::size_t i = 0; i < tri_ct; ++i) {
         Tri &t = tris[t_base + i];
 
+        if (t.x == max || t.y == max || t.z == max)
+            continue;
         // fetch the 3 actual Vertex values this triangle references
         Vertex a = verts[t.x];
         Vertex b = verts[t.y];
         Vertex c = verts[t.z];
+
 
         bool a_out = false, b_out = false, c_out = false;
 
