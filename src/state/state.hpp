@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <type_traits>
 #include <glm/vec3.hpp>
+#include <tuple>
 
-using dim = std::size_t;
 using coord = glm::ivec3;
 
 // TODO: reserve the highest material IDs for debug elements.
@@ -40,13 +40,16 @@ struct WorldState {
   Cell* d_curr;
   Cell* d_next;
 
+  std::tuple<size_t, size_t, size_t> validateWorldFile(const char* f);
+  WorldState(std::tuple<size_t, size_t, size_t> dims);
   WorldState(size_t n, size_t m, size_t k);
+  WorldState(const char* f);
   ~WorldState();
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
-  dim n() const { return static_cast<dim>(dimensions.x); }
-  dim m() const { return static_cast<dim>(dimensions.y); }
-  dim k() const { return static_cast<dim>(dimensions.z); }
+  size_t n() const { return static_cast<size_t>(dimensions.x); }
+  size_t m() const { return static_cast<size_t>(dimensions.y); }
+  size_t k() const { return static_cast<size_t>(dimensions.z); }
   // Visible coordinates [0,n) x [0,m) x [0,k), shifted into padded storage.
   size_t index(size_t x, size_t y, size_t z) const;
   // Signed renderer coordinates can address the one-cell BLOCK halo.
@@ -54,6 +57,8 @@ struct WorldState {
   // These access the CPU initialization/snapshot image, not live GPU memory.
   Cell& operator()(coord c);
   const Cell& operator()(coord c) const;
+  // Find the index into an unpadded array of n*m*k size given unpadded/visible coordinates.
+  size_t unPaddedIndex(size_t x, size_t y, size_t z) const;
   // Raw padded coordinates; z is contiguous, with strides m_pad*k_pad,
   // k_pad, 1. Rendering should iterate visible dimensions and use index().
   size_t paddedIndex(size_t x, size_t y, size_t z) const;

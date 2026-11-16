@@ -3,12 +3,11 @@
 #include "extra/check.hpp"
 
 #include <cuda_runtime.h>
-#include <iostream>
 #include <fstream>
 #include <filesystem>
 
 // Face encoding: material IDs in top-left, top-right, bottom-left, bottom-right order.
-LUT::LUT(const char* f) {
+LUT::LUT(const char* f) : d_lut(nullptr) {
     std::filesystem::path path(f);
     if (!std::filesystem::exists(path)) {
         throw std::runtime_error("LUT file does not exist: " + path.string());
@@ -21,12 +20,24 @@ LUT::LUT(const char* f) {
         throw std::runtime_error("Failed to open LUT file: " + path.string());
     }
 
-    CUDA_CHECK(cudaMalloc(&d_lut, FACE_LUT_SIZE));
-    FaceETile* h_lut = new FaceETile[FACE_LUT_ELEMS];
-    file.read(reinterpret_cast<char*>(h_lut), FACE_LUT_SIZE);
-    CUDA_CHECK(cudaMemcpy(d_lut, h_lut, FACE_LUT_SIZE, cudaMemcpyHostToDevice));
-    delete[] h_lut;
+    FaceETile* h_lut = nullptr;
+    try {
+        CUDA_CHECK(cudaMalloc(&d_lut, FACE_LUT_SIZE));
+        h_lut = new FaceETile[FACE_LUT_ELEMS];
+        if(!file.read(reinterpret_cast<char*>(h_lut), FACE_LUT_SIZE)) {
+            throw std::runtime_error("Failed to read LUT file: " + path.string());
+        }
+        CUDA_CHECK(cudaMemcpy(d_lut, h_lut, FACE_LUT_SIZE, cudaMemcpyHostToDevice));
+    } catch (...) {
+        // Construction failure does not run the destructor.
+        if (h_lut) delete[] h_lut;
+        if (d_lut) cudaFree(d_lut);
+        d_lut = nullptr;
+        throw;
+    }
+    if (h_lut) delete[] h_lut;
 };
+
 LUT::~LUT() {
     cudaFree(d_lut);
 }

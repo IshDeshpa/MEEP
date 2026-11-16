@@ -24,6 +24,8 @@ struct LUT {
 
     LUT(const char* f);
     ~LUT();
+    LUT(const LUT&) = delete;
+    LUT& operator=(const LUT&) = delete;
 
     DeviceLUTView deviceView() const;
 #endif

@@ -6,6 +6,9 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 
 namespace {
 glm::ivec3 checkedDimensions(size_t n, size_t m, size_t k) {
@@ -28,8 +31,30 @@ __global__ void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
 
 // WorldState: CPU ownership, initialization, and tick submission.
 
-WorldState::WorldState(size_t n, size_t m, size_t k)
-    : dimensions(checkedDimensions(n, m, k)), n_pad(0), m_pad(0), k_pad(0),
+std::tuple<size_t, size_t, size_t> WorldState::validateWorldFile(const char* f) {
+    std::filesystem::path path(f);
+    if (!std::filesystem::exists(path)) {
+        throw std::runtime_error("LUT file does not exist: " + path.string());
+    }
+
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
+        throw std::runtime_error("Failed to open LUT file: " + path.string());
+    }
+
+    // Read the dimensions from the file
+    size_t n, m, k;
+    if (!file.read(reinterpret_cast<char*>(&n), sizeof(n)) ||
+        !file.read(reinterpret_cast<char*>(&m), sizeof(m)) ||
+        !file.read(reinterpret_cast<char*>(&k), sizeof(k))) {
+        throw std::runtime_error("Failed to read world dimensions");
+    }
+
+    return std::make_tuple(n, m, k);
+}
+
+WorldState::WorldState(std::tuple<size_t, size_t, size_t> dims)
+    : dimensions(checkedDimensions(std::get<0>(dims), std::get<1>(dims), std::get<2>(dims))), n_pad(0), m_pad(0), k_pad(0),
       world(nullptr), d_curr(nullptr), d_next(nullptr) {
     const auto max = std::numeric_limits<size_t>::max();
     n_pad = n() + 2;
@@ -86,6 +111,39 @@ WorldState::WorldState(size_t n, size_t m, size_t k)
     world = initial.release();
 }
 
+WorldState::WorldState(size_t n, size_t m, size_t k) : WorldState(std::make_tuple(n, m, k)) {}
+
+WorldState::WorldState(const char* f) : WorldState(validateWorldFile(f)) {
+    std::filesystem::path path(f);
+    const auto file_bytes = std::filesystem::file_size(path);
+    const auto expected_size = n() * m() * k() * sizeof(Cell);
+
+    if ((file_bytes - 3*sizeof(size_t)) != expected_size) {
+        throw std::runtime_error("File size does not match expected world size");
+    }
+
+    std::ifstream file(path, std::ios::binary);
+    std::vector<Cell> h_world(n() * m() * k());
+    file.seekg(3 * sizeof(size_t), std::ios::beg);
+    if (!file.read(reinterpret_cast<char*>(h_world.data()), expected_size)) {
+        throw std::runtime_error("Failed to read world cells from file");
+    }
+
+    for (size_t x = 0; x < n_pad; ++x) {
+        for (size_t y = 0; y < m_pad; ++y) {
+            for (size_t z = 0; z < k_pad; ++z) {
+                if (!(x == 0 || x == n_pad - 1 ||
+                      y == 0 || y == m_pad - 1 ||
+                      z == 0 || z == k_pad - 1)) {
+                    world[paddedIndex(x, y, z)] = h_world[unPaddedIndex(x - 1, y - 1, z - 1)];
+                }
+            }
+        }
+    }
+    CUDA_CHECK(cudaMemcpy(d_curr, world, n_pad * m_pad * k_pad * sizeof(Cell), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_next, world, n_pad * m_pad * k_pad * sizeof(Cell), cudaMemcpyHostToDevice));
+}
+
 WorldState::~WorldState() {
     delete[] world;
     cudaFree(d_curr);
@@ -114,6 +172,10 @@ Cell& WorldState::operator()(coord c) {
 
 const Cell& WorldState::operator()(coord c) const {
     return world[index(c)];
+}
+
+size_t WorldState::unPaddedIndex(size_t x, size_t y, size_t z) const {
+    return z + k() * (y + m() * x);
 }
 
 size_t WorldState::paddedIndex(size_t x, size_t y, size_t z) const {
