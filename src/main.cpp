@@ -9,7 +9,7 @@
 #include <thread>
 
 std::size_t tick_counter = 0;
-std::chrono::steady_clock::duration recent_tick_times[600];
+std::chrono::steady_clock::duration recent_tick_times[6000];
 
 // TODO: variable tick rate
 enum TickRate : std::uint16_t { // Measured in ms per tick
