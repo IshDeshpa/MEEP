@@ -70,5 +70,4 @@ void rasterizeLaunch();
 MEEP_GLOBAL void rasterize(
     const Vertex2D* verts2d, const Vertex* verts, const Tri* tris,
     std::size_t num_tris, std::size_t num_verts, DeviceScreenData screen,
-    const CellRenderEntity* entities, std::size_t tris_per_entity
-);
+    const CellRenderEntity* entities, std::size_t tris_per_entity);

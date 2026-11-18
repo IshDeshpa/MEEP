@@ -1,5 +1,8 @@
 #include "render/render.hpp"
 #include <limits>
+#include <cstdio>
+#include <fstream>
+#include <stdexcept>
 
 // want to tweak these when testing to see most efficient block size for rasterization
 #define RASTER_BLOCK_X 16
@@ -23,6 +26,59 @@ void rasterizeLaunch() {
     Camera& camera = Camera::instance();
 
     CUDA_CHECK(cudaMemcpy(camera.framebuffer.data(), screen.framebuffer, screen.WIDTH * screen.HEIGHT * sizeof(Color), cudaMemcpyDeviceToHost));
+
+#if (MEEP_DEBUG == 1)
+    std::size_t colored_pixels = 0;
+
+    for (const Color& pixel : camera.framebuffer) {
+        if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+            ++colored_pixels;
+    }
+
+    printf("Rasterizer: %zu / %zu pixels are non-black\n",
+           colored_pixels, camera.framebuffer.size());
+
+    const std::size_t sample_x[] = {
+        screen.WIDTH / 4,
+        screen.WIDTH / 2,
+        3 * screen.WIDTH / 4
+    };
+    const std::size_t sample_y = screen.HEIGHT / 2;
+
+    for (const std::size_t px : sample_x) {
+        const Color& color =
+            camera.framebuffer[sample_y * screen.WIDTH + px];
+
+        printf("Pixel (%zu, %zu): RGBA=(%u, %u, %u, %u)\n",
+               px, sample_y,
+               static_cast<unsigned>(color.r),
+               static_cast<unsigned>(color.g),
+               static_cast<unsigned>(color.b),
+               static_cast<unsigned>(color.a));
+    }
+#endif
+
+#if (MEEP_DEBUG == 1)
+    std::ofstream image("render_debug.ppm", std::ios::binary);
+    if (!image)
+        throw std::runtime_error("Cannot open render_debug.ppm");
+
+    // P6 = binary RGB, followed by dimensions and maximum channel value.
+    image << "P6\n"
+          << screen.WIDTH << ' ' << screen.HEIGHT << "\n255\n";
+
+    for (const Color& pixel : camera.framebuffer) {
+        const unsigned char rgb[3] = {
+            pixel.r, pixel.g, pixel.b
+        };
+        image.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
+    }
+
+    image.close();
+    if (!image)
+        throw std::runtime_error("Failed to write render_debug.ppm");
+#endif
+
 
 }
 
