@@ -22,5 +22,5 @@ DeviceScreen::DeviceScreen(const std::size_t w, const std::size_t h){
   WIDTH = w;
   HEIGHT = h;
   CUDA_CHECK(cudaMalloc(&framebuffer, sizeof(Color) * w * h));
-  CUDA_CHECK(cudaMalloc(&depthbuffer, sizeof(uint8_t) * w * h));
+  CUDA_CHECK(cudaMalloc(&depthbuffer, sizeof(float) * w * h));
 }

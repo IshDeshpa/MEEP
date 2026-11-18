@@ -66,4 +66,9 @@ MEEP_GLOBAL void ndcToScreen(const Vertex *verts, Vertex2D *verts2d, std::size_t
 // Turn verts into pixels + depth buffer in the on-gpu DeviceScreen, and then cudaMemcpy over to the on-cpu HostScreen
 // At the end of this, in the HostScreen Vectors, we should have exactly the final pixels to put on the screen
 void rasterizeLaunch();
-MEEP_GLOBAL void rasterize();
+// so many params
+MEEP_GLOBAL void rasterize(
+    const Vertex2D* verts2d, const Vertex* verts, const Tri* tris,
+    std::size_t num_tris, std::size_t num_verts, DeviceScreenData screen,
+    const CellRenderEntity* entities, std::size_t tris_per_entity
+);

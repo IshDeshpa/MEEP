@@ -19,4 +19,5 @@ int main() {
     clipVertsLaunch();
     clipToNDCLaunch();
     ndcToScreenLaunch();
+    rasterizeLaunch();
 }
