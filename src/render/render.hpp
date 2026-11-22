@@ -6,6 +6,9 @@
 #include <cstddef>
 #include <memory>
 
+inline constexpr std::size_t MAX_NEW_VERTS = 12;
+inline constexpr std::size_t VERTS_PER_CUBE = 8 + MAX_NEW_VERTS;
+
 class Renderer{
 public:
   const DeviceCube *device_cube;
@@ -14,6 +17,8 @@ public:
 
   std::unique_ptr<DeviceBuffer<Vertex>> verts;
   std::unique_ptr<DeviceBuffer<Tri>> tris;
+
+  std::unique_ptr<DeviceBuffer<Vertex2D>> verts2d;
 
   // Global singleton, built on first use
   static Renderer &instance();
@@ -46,7 +51,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
 
 // 4. Clip space -> NDC
 void clipToNDCLaunch();
-// (x, y, z, w) -> (x/w, y/w, z/w, 1) for every vert. w > 0 in all cases here hopefully (if we clipped right)
+// (x, y, z, w) -> (x/w, y/w, z/w, 1) for every vert. w > Z_near (not 0) in all cases here hopefully (if we clipped right)
 // Might be able to combine with clipVertsByNear, but we'll do that later
 MEEP_GLOBAL void clipToNDC(Vertex *verts, std::size_t num_entities);
 MEEP_GLOBAL void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_sz);
@@ -55,7 +60,7 @@ MEEP_GLOBAL void backfaceCull(const Vertex *verts, Tri *tris, std::size_t tris_s
 // maps 3d NDC coords to 2d screen coords
 // probably does more clipping too
 void ndcToScreenLaunch();
-MEEP_GLOBAL void ndcToScreen(const Vertex *verts, Vertex2D *verts2d);
+MEEP_GLOBAL void ndcToScreen(const Vertex *verts, Vertex2D *verts2d, std::size_t count);
 
 // 6. Rasterize the screen (assign colors to pixels)
 // Turn verts into pixels + depth buffer in the on-gpu DeviceScreen, and then cudaMemcpy over to the on-cpu HostScreen

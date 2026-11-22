@@ -8,7 +8,7 @@ MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
 # DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into
 # build/debug/; DEBUG=0 (default) is the normal optimized build.
-DEBUG    ?= 0
+DEBUG    ?= 1
 ifneq ($(filter-out 0 1,$(DEBUG)),)
 $(error DEBUG must be 0 or 1, got '$(DEBUG)')
 endif
