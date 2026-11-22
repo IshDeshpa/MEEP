@@ -114,17 +114,26 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
     const float pixel_center_x = static_cast<float>(x) + 0.5f;
     const float pixel_center_y = static_cast<float>(y) + 0.5f;
 
-    Color best_color{0, 0, 0, 255}; // black background
+    // transparency, max of 3 transparent colors to blend
+    Color transparent_colors[3]{}; // initialize to black
+    float transparent_depths[3] = {std::numeric_limits<float>::max(), 
+        std::numeric_limits<float>::max(), std::numeric_limits<float>::max()}; // initialize to max depth
+
+    Color best_color{50, 50, 50, 255}; // initialize to black
     float best_depth = std::numeric_limits<float>::max(); // initialize to max depth
-
-    // use barycentric coordinates (explain to others)
-
 
     for (std::size_t t = 0; t < num_tris; ++t) {
         const Tri &tri = tris[t];
         
         // skip culled triangles
         if (tri.x >= num_verts || tri.y >= num_verts || tri.z >= num_verts) {
+            continue;
+        }
+
+        const std::size_t entity_idx = t / tris_per_entity;
+        const Color color = entities[entity_idx].color;
+
+        if (color.a == 0) { // fully transparent, skip
             continue;
         }
 
@@ -164,12 +173,39 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
         if (!(depth >= -1.0f && depth <= 1.0f))
             continue;
 
-        if (depth < best_depth) {
-            best_depth = depth;
-            const std::size_t entity_idx = t / tris_per_entity;
-            best_color = entities[entity_idx].color;
+        if (color.a == 255) { // fully opaque, just write to buffer
+            if (depth < best_depth) {
+                best_depth = depth;
+                best_color = color;
+            }
+        } else {
+            // partially transparent, blend with existing color
+            for (int i = 0; i < 3; ++i) {
+                if (depth < transparent_depths[i]) {
+                    // shift existing colors down
+                    for (int j = 2; j > i; --j) {
+                        transparent_colors[j] = transparent_colors[j - 1];
+                        transparent_depths[j] = transparent_depths[j - 1];
+                    }
+                    // insert new color
+                    transparent_colors[i] = color;
+                    transparent_depths[i] = depth;
+                    break;
+                }
+            }
         }
     }
+    for (int i = 0; i < 3; ++i) {
+        if (transparent_depths[i] < best_depth) {
+            const Color &trans_color = transparent_colors[i];
+            const Color &opaque_color = best_color;
+
+            
+        }
+    }
+    
+
+
     // write to buf
     screen.framebuffer[idx] = best_color;
     screen.depthbuffer[idx] = best_depth;

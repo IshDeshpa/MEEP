@@ -49,6 +49,7 @@ DEFINE_ENUM_LUT(ELEMENT_COLOR_LUT, Element, Color,
     { 30, 144, 255, 128}, // WATER
     {139,  90,  43, 255}, // EARTH
     {255,  69,   0, 255}, // LAVA
+    
     {100, 100, 110, 255}, // BLOCK
     {255, 215,   0, 255}, // EMITTER
     { 40,  10,  60, 255}, // VOID
