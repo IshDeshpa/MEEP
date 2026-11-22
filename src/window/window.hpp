@@ -1,5 +1,6 @@
 #pragma once
 
+#include "render/camera.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -28,14 +29,19 @@ public:
     return state.test(XKeysymToKeycode(instance().d, lower));
   }
 
+  void updateScreen(HostScreen &s);
+
 private:
   GameWindow();
   ~GameWindow();
 
   Display *d;
+  XVisualInfo *vi;
   int s;
   Window w;
   GC gc;
+  XImage *img;
+
   Atom wm_delete;
 
   // Set of keys that are considered valid (keycodes, not keysyms)

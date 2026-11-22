@@ -1,5 +1,8 @@
 #include "window/window.hpp"
 #include "config.hpp"
+#include "render/camera.hpp"
+#include <X11/Xutil.h>
+#include <malloc.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <stdexcept>
@@ -39,6 +42,12 @@ GameWindow::GameWindow(){
     black_color // window background color
   );
 
+  XVisualInfo query{};
+  query.visualid = XVisualIDFromVisual(DefaultVisual(this->d, this->s));
+
+  int count = 0;
+  this->vi = XGetVisualInfo(this->d, VisualIDMask, &query, &count);
+
   // inform us of window mapping events only
   XSelectInput(this->d, this->w, StructureNotifyMask);
 
@@ -57,6 +66,23 @@ GameWindow::GameWindow(){
 
   XFlush(this->d);
 
+  // XImage
+  this->img = XCreateImage(
+    this->d,
+    DefaultVisual(this->d, this->s),
+    DefaultDepth(this->d, this->s),
+    ZPixmap, // pixmap format
+    0, // number of pixels to offset by
+    NULL, // image data (nothing rn)
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    32, // padding between scanlines
+    0
+  );
+
+  // allocate the image buffer
+  this->img->data = new char[img->bytes_per_line * img->height];
+
   // block until the window is mapped
   XEvent e;
   do {
@@ -65,11 +91,32 @@ GameWindow::GameWindow(){
 }
 
 GameWindow::~GameWindow(){
+  delete []this->img->data;
   XFreeGC(this->d, this->gc);
   XDestroyWindow(this->d, this->w);
   XCloseDisplay(this->d);
 }
 
+void GameWindow::updateScreen(HostScreen &s){
+  for(std::size_t i = 0; i < s.WIDTH; i++){
+    for(std::size_t j = 0; j < s.HEIGHT; j++){
+      XPutPixel(this->img, i, j, s.framebuffer[j*s.WIDTH + i].getNativePixel(this->vi));
+    }
+  }
+
+  XPutImage(
+    this->d, 
+    this->w, 
+    this->gc, 
+    this->img, 
+    0, 0,
+    0, 0,
+    this->img->width,
+    this->img->height
+  );
+
+  XFlush(this->d);
+}
 
 std::bitset<256> GameWindow::pressedKeys(){
   char keymap[32];

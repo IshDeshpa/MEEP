@@ -40,6 +40,10 @@ public:
   DeviceScreen(const DeviceScreen &) = delete;
   DeviceScreen &operator=(const DeviceScreen &) = delete;
 
+  // return a new host screen transferred from this device screen
+  // to be called only from host
+  HostScreen hostScreen(const std::size_t w, const std::size_t h);
+
 private:
   DeviceScreen(const std::size_t w, const std::size_t h);
 };

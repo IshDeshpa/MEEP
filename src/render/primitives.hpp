@@ -1,11 +1,13 @@
 #pragma once
 
+#include <X11/Xutil.h>
 #include <glm/fwd.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/euler_angles.hpp>
 #include <cstddef>
 #include <string>
+#include <strings.h>
 #include <type_traits>
 #include <vector>
 #include "extra/cuda_compat.hpp"
@@ -42,6 +44,27 @@ DEFINE_ENUM_LUT(DIRECTION_LUT, Direction, glm::vec3,
 
 struct Color {
   uint8_t r; uint8_t g; uint8_t b; uint8_t a;
+
+  constexpr unsigned maskToShift(unsigned mask){
+    return ffs(mask) - 1; // find first bit set; also "for fuck's sake"
+  }
+  constexpr unsigned maskToSize(unsigned mask){
+    return std::popcount(mask); // number of bits set in the mask
+  }
+
+  constexpr unsigned getNativePixel(XVisualInfo *vi){ 
+    unsigned long &r_mask = vi->red_mask;
+    unsigned long &g_mask = vi->green_mask;
+    unsigned long &b_mask = vi->blue_mask;
+
+    unsigned rm_shift = maskToShift(r_mask);
+    unsigned gm_shift = maskToShift(g_mask);
+    unsigned bm_shift = maskToShift(b_mask);
+
+    return ((r << rm_shift) & r_mask) |
+            ((b << bm_shift) & b_mask) |
+            ((g << gm_shift) & g_mask);
+  }
 };
 
 DEFINE_ENUM_LUT(ELEMENT_COLOR_LUT, Element, Color, 
