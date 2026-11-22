@@ -18,7 +18,7 @@ struct HostScreen {
   const std::size_t WIDTH; // pixels
   const std::size_t HEIGHT; // pixels
   std::vector<Color> framebuffer; // size = w*h
-  std::vector<uint8_t> depthbuffer; // size = w*h
+  std::vector<float> depthbuffer; // size = w*h
 };
 
 // GPU-resident screen data: the buffers are device pointers
@@ -26,7 +26,7 @@ struct DeviceScreenData {
   std::size_t WIDTH; // pixels
   std::size_t HEIGHT; // pixels
   Color *framebuffer; // size = w*h
-  uint8_t *depthbuffer; // size = w*h
+  float *depthbuffer; // size = w*h
 };
 
 // Host-side handle that allocates the GPU buffers and copies DeviceScreenData into DEVICE_SCREEN
