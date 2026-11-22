@@ -3,118 +3,92 @@
 #include "extra/cuda_compat.hpp"
 #include "lut.hpp"
 
+#include <cuda_runtime.h>
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 #include <type_traits>
 #include <glm/vec3.hpp>
-#include <tuple>
 
-using coord = glm::ivec3;
-// using TickRate = std::uint16_t; // Measured in ms per tick
+using dim = std::size_t;
+using worldcoord = glm::ivec3;
+using coord = worldcoord;
 
-// TODO: reserve the highest material IDs for debug elements.
 enum class Element : std::uint8_t {
-  AIR = 0,
-  WATER = 1,
-  EARTH = 2,
-  LAVA = 3,
-  // debug
-  BLOCK = 4,
-  EMITTER = 5,
-  VOID = 6,
-  COUNT = 7
+  AIR = 0, WATER = 1, EARTH = 2, LAVA = 3,
+  BLOCK = 4, EMITTER = 5, VOID = 6, COUNT = 7
 };
 
-// A cell contains all the information that needs to be in world state about
-// a single cell
 struct Cell {
   Element elem: 4;
-  std::uint8_t state: 4; // expand out to separate fields later based on what we want
+  std::uint8_t state: 4;
 };
 
-struct DeviceWorldView;
+struct CubeTile { Cell cells[8]; };
+static_assert(sizeof(Cell) == 1);
+static_assert(sizeof(CubeTile) == 8 * sizeof(Cell));
+
+struct DeviceWorldView {
+  const Cell* curr;
+  Cell* next;
+  std::size_t n_pad, m_pad, k_pad;
+
+  MEEP_HOST_DEVICE std::size_t visibleN() const noexcept { return n_pad - 2; }
+  MEEP_HOST_DEVICE std::size_t visibleM() const noexcept { return m_pad - 2; }
+  MEEP_HOST_DEVICE std::size_t visibleK() const noexcept { return k_pad - 2; }
+  MEEP_HOST_DEVICE std::size_t size() const noexcept {
+    return visibleN() * visibleM() * visibleK();
+  }
+
+  MEEP_HOST_DEVICE
+  std::size_t index(std::size_t x, std::size_t y, std::size_t z) const noexcept;
+  MEEP_HOST_DEVICE
+  worldcoord coord(std::size_t ind) const noexcept {
+    const std::size_t visible_m = visibleM(), visible_k = visibleK();
+    return worldcoord(static_cast<int>(ind / (visible_m * visible_k)),
+                      static_cast<int>((ind / visible_k) % visible_m),
+                      static_cast<int>(ind % visible_k));
+  }
+  MEEP_HOST_DEVICE Cell readCell(std::size_t x, std::size_t y,
+                                 std::size_t z) const noexcept;
+  MEEP_HOST_DEVICE Cell readCell(worldcoord c) const noexcept;
+  MEEP_HOST_DEVICE CubeTile readTile(std::size_t x, std::size_t y,
+                                     std::size_t z) const noexcept;
+  MEEP_HOST_DEVICE CubeTile readTile(worldcoord c) const noexcept;
+  MEEP_HOST_DEVICE void writeCell(std::size_t x, std::size_t y,
+                                  std::size_t z, Cell cell) const noexcept;
+  MEEP_HOST_DEVICE void writeCell(worldcoord c, Cell cell) const noexcept;
+  MEEP_HOST_DEVICE void writeTile(std::size_t x, std::size_t y,
+                                  std::size_t z, const CubeTile& tile) const noexcept;
+  MEEP_HOST_DEVICE void writeTile(worldcoord c, const CubeTile& tile) const noexcept;
+};
+static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
 
 struct WorldState {
-  glm::ivec3 dimensions; // Requested, visible dimensions.
-  std::size_t n_pad, m_pad, k_pad; // One BLOCK cell on each side.
-  Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
+  dim n, m, k;
+  std::size_t n_pad, m_pad, k_pad;
+  Cell* world;
   Cell* d_curr;
   Cell* d_next;
+  // Per-world view, refreshed whenever the GPU buffers change roles.
+  DeviceWorldView device_view;
   cudaStream_t world_tick_stream;
 
-  std::tuple<size_t, size_t, size_t> validateWorldFile(const char* f);
+  static std::tuple<size_t, size_t, size_t> validateWorldFile(const char* f);
   WorldState(std::tuple<size_t, size_t, size_t> dims);
   WorldState(size_t n, size_t m, size_t k);
   WorldState(const char* f);
   ~WorldState();
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
-  size_t n() const { return static_cast<size_t>(dimensions.x); }
-  size_t m() const { return static_cast<size_t>(dimensions.y); }
-  size_t k() const { return static_cast<size_t>(dimensions.z); }
-  // Visible coordinates [0,n) x [0,m) x [0,k), shifted into padded storage.
   size_t index(size_t x, size_t y, size_t z) const;
-  // Signed renderer coordinates can address the one-cell BLOCK halo.
-  size_t index(coord c) const;
-  // These access the CPU initialization/snapshot image, not live GPU memory.
-  Cell& operator()(coord c);
-  const Cell& operator()(coord c) const;
-  // Find the index into an unpadded array of n*m*k size given unpadded/visible coordinates.
+  size_t index(worldcoord c) const;
+  Cell& operator()(worldcoord c);
+  const Cell& operator()(worldcoord c) const;
   size_t unPaddedIndex(size_t x, size_t y, size_t z) const;
-  // Raw padded coordinates; z is contiguous, with strides m_pad*k_pad,
-  // k_pad, 1. Rendering should iterate visible dimensions and use index().
   size_t paddedIndex(size_t x, size_t y, size_t z) const;
-  // Capture the current device-buffer roles and padded strides for a launch.
   DeviceWorldView deviceView() const;
   void updateWorld(std::size_t tick, LUT& lut);
-  void waitForTick(); // Wait for the current simulation stream to finish.
+  void waitForTick();
   void swapBuffers();
 };
-
-/*
- * A 2x2x2 tile containing eight 1-byte Cells.
- * Labels mark cell positions: cell_id = 4*x + 2*y + z.
- * z changes fastest, then y, then x.
- *
- *           6---------7
- *          /|        /|
- *         2---------3 |
- *         | 4-------|-5
- *         |/        |/
- *         0---------1
- *
- *         y: up   x: back (/)   z: right
- *
- * Faces in top-left, top-right, bottom-left, bottom-right order:
- *   x = 0: [2, 3, 0, 1]    x = 1: [6, 7, 4, 5]
- *   z = 1: [3, 7, 1, 5]    z = 0: [2, 6, 0, 4]
- */
-struct CubeTile {
-  Cell cells[8];
-};
-
-static_assert(sizeof(Cell) == 1);
-static_assert(sizeof(CubeTile) == 8 * sizeof(Cell));
-
-// Non-owning view passed by value; it does not copy world cells.
-struct DeviceWorldView {
-  const Cell* curr;
-  Cell* next;
-  std::size_t m_pad, k_pad;
-
-  // Visible (0,0,0) is padded (1,1,1); signed coordinates include the halo.
-  MEEP_HOST_DEVICE
-  std::size_t index(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
-
-  // Caller guarantees the full tile fits, including origins at -1.
-  MEEP_HOST_DEVICE
-  CubeTile readTile(std::ptrdiff_t x, std::ptrdiff_t y,
-                    std::ptrdiff_t z) const noexcept;
-
-  MEEP_HOST_DEVICE
-  void writeTile(std::ptrdiff_t x, std::ptrdiff_t y, std::ptrdiff_t z,
-                  const CubeTile& tile) const noexcept;
-};
-static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
-

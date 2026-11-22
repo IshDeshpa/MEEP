@@ -50,7 +50,7 @@ struct HostBuffer {
 
 // One explicit byte per cell: low nibble = element, high nibble = state.
 // Mix the index so the buffer is varied rather than all air or a single byte.
-std::uint8_t fake_cell(std::size_t index) {
+std::uint8_t fakeCell(std::size_t index) {
     std::uint32_t v = static_cast<std::uint32_t>(index);
     v ^= v >> 16; v *= 0x7feb352du;
     v ^= v >> 15; v *= 0x846ca68bu;
@@ -62,7 +62,7 @@ std::uint8_t fake_cell(std::size_t index) {
 
 void benchmark(std::uint8_t* gpu, std::size_t bytes, unsigned repeats, bool pinned) {
     HostBuffer host(bytes, pinned);
-    for (std::size_t i = 0; i < bytes; ++i) host.data[i] = fake_cell(i);
+    for (std::size_t i = 0; i < bytes; ++i) host.data[i] = fakeCell(i);
 
     // Allocation, initialization, and warmup are outside the measured region.
     for (unsigned i = 0; i < 3; ++i) {
@@ -100,7 +100,7 @@ void benchmark(std::uint8_t* gpu, std::size_t bytes, unsigned repeats, bool pinn
               << std::setw(14) << median << std::setw(14) << gbps << "      PASS\n";
 }
 
-unsigned long long positive_number(const char* arg) {
+unsigned long long positiveNumber(const char* arg) {
     const std::string text(arg);
     if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos)
         throw std::invalid_argument("Arguments must be positive whole numbers");
@@ -112,8 +112,8 @@ unsigned long long positive_number(const char* arg) {
 int main(int argc, char** argv) {
     try {
         if (argc > 3) throw std::invalid_argument("Usage: ./transfer_bw [MiB=128] [repeats=20]");
-        const auto mib = argc > 1 ? positive_number(argv[1]) : 128ull;
-        const auto reps = argc > 2 ? positive_number(argv[2]) : 20ull;
+        const auto mib = argc > 1 ? positiveNumber(argv[1]) : 128ull;
+        const auto reps = argc > 2 ? positiveNumber(argv[2]) : 20ull;
         if (mib > std::numeric_limits<std::size_t>::max() / MiB || reps > 100000)
             throw std::invalid_argument("Requested size or repeat count is too large");
         const std::size_t bytes = static_cast<std::size_t>(mib) * MiB;

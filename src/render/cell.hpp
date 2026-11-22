@@ -2,51 +2,87 @@
 
 #include <glm/glm.hpp>
 #include <limits>
-using namespace glm;
 
 #include <stddef.h>
-#include <memory>
 #include <array>
-#include <vector>
+#include <type_traits>
 
+#include "extra/cuda_compat.hpp"
 #include "render/primitives.hpp"
 #include "state/state.hpp"
 
-// A cell reference wrapper that also has
-// self-contained coords
+// A cell that also has self-contained coords
 struct CellRef{
-  Cell &cell;
-  coord coords;
+  Cell cell;
+  worldcoord coords;
 
-  CellRef(Cell &cell, coord c): cell(cell), coords(c){}
+  MEEP_HOST_DEVICE CellRef(Cell cell, worldcoord c): cell(cell), coords(c){}
 };
 
-struct CellFace{
-  TriRef a = std::numeric_limits<unsigned int>().max();
-  TriRef b = std::numeric_limits<unsigned int>().max();
-  Direction d; // what side of the cube is it on?
-};
+struct HostCube {
+  static constexpr const char *CUBE_PATH = "./assets/cube.obj";
+  Geometry CUBE_GEOM{CUBE_PATH}; // CPU copy; DeviceCube transfers it to the GPU
 
+  static HostCube &instance();
 
-class CellRenderEntity : public Entity{
+  // Counts of the cube's CPU-side geometry
+  static std::size_t numTris();
+  static std::size_t numVerts();
+
+  HostCube(const HostCube &) = delete;
+  HostCube &operator=(const HostCube &) = delete;
+
 private:
-  static const std::array<CellFace, 6> makeFaces();
-
-public:
-  CellRef &cell_ref;
-
-  inline static const Geometry CUBE_GEOM{"./assets/cube.obj"}; // buffers
-  inline static const Mesh CUBE_MESH{CUBE_GEOM, 0, static_cast<TriRef>(CUBE_GEOM.size()-1)}; // spots in buffers
-  inline static std::array<CellFace, 6> CUBE_FACES{makeFaces()}; // 6 faces for a cube
-
-  CellRenderEntity(CellRef &cr): Entity(CUBE_MESH, lutGet(ELEMENT_COLOR_LUT, cr.cell.elem), cr.coords, dvec3(0, 0, 0)), cell_ref(cr){}
-
-  unsigned int updateMeshMask(WorldState &ws); // return new count of visible faces
-  void updateColor(); // based on cell reference's current elem
-  
-  void print();
-
-  static std::unique_ptr<CellRenderEntity> create(CellRef &c, WorldState &ws); // factory function, call with CellRenderEntity.create
-
+  HostCube() = default;
 };
 
+struct DeviceCubeData : public DeviceGeometryData {};
+// Not checked for standard layout: it derives from DeviceGeometryData and adds its own members,
+// which standard layout forbids. Trivial copyability is what the memcpy needs.
+static_assert(std::is_trivially_copyable_v<DeviceCubeData>);
+
+// We need the class (with the functions) to be separate from the GPU resident data struct,
+// because otherwise we can't instantiate a const DeviceCube because it'll call the constructor
+class DeviceCube : public DeviceCubeData {
+public:
+  using Data = DeviceCubeData;
+
+  // CPU singleton, built on first use. Not a namespace-scope static: its constructor
+  // calls CUDA, and that runs before the CUDA runtime has registered this module.
+  static const DeviceCube &instance();
+
+  DeviceCube(const DeviceCube &) = delete;
+  DeviceCube &operator=(const DeviceCube &) = delete;
+
+private:
+  DeviceCube();
+};
+
+#ifdef __CUDACC__
+extern __constant__ DeviceCube::Data DEVICE_CUBE;
+#endif
+
+class CellRenderEntity : public DeviceEntity {
+  CellRef cell_ref;
+  
+public:
+  // Placeholder for containers that default-construct; overwritten by a copy from the GPU
+  CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, worldcoord(0)) {}
+
+  // DeviceEntity's constructor already allocates triMask
+  MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, coord, glm::dvec3(0.0)), cell_ref(CellRef(c, coord)) {}
+
+  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): CellRenderEntity(cr.cell, cr.coords, dcd, color) {}
+
+  // Device only: sets triMask so that the triangles of each face are shown when that face's bit is set.
+  // Bit i of face_bits is the Direction with value i (X_PLUS = bit 0, ..., Z_MINUS = bit 5).
+  MEEP_DEVICE void setFaceMask(uint8_t face_bits);
+
+  // Host only: prints the cell, its coords and its color to stdout
+  void print() const;
+};
+
+MEEP_DEVICE uint8_t getFaceBitmask(CellRef &c, DeviceWorldView dwv);
+
+// Direction of a triangle's outward face (dominant axis of its normal, signed). Assumes axis-aligned triangles.
+MEEP_DEVICE Direction triangleDirection(const Vertex &a, const Vertex &b, const Vertex &c);

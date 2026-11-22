@@ -3,12 +3,21 @@ GLM_DIR  := glm
 OBJ_DIR  := build
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state extra
+MODULES  := render state extra window
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
-DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
+# DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into
+# build/debug/; DEBUG=0 (default) is the normal optimized build.
+DEBUG    ?= 0
+ifneq ($(filter-out 0 1,$(DEBUG)),)
+$(error DEBUG must be 0 or 1, got '$(DEBUG)')
+endif
+
+DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"' -DMEEP_DEBUG=$(DEBUG)
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
+# libraries go after the objects on the link line, so they are kept by the linker
+LDLIBS   := -lX11
 TARGET   := main
 ARGS     ?=
 SANITIZER ?=
@@ -17,6 +26,13 @@ VALGRIND  ?= valgrind
 VALGRIND_FLAGS ?= --tool=memcheck --leak-check=full --track-origins=yes
 GDB       ?= gdb
 GDB_FLAGS ?= --args
+COMPUTE_SANITIZER ?= compute-sanitizer
+COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
+
+ifeq ($(DEBUG),1)
+OBJ_DIR := build/debug
+CXXFLAGS := $(filter-out -O3,$(CXXFLAGS)) -O0 -g
+endif
 
 # Keep sanitizer objects separate so changing SANITIZER never reuses stale objects.
 ifneq ($(SANITIZER),)
@@ -57,8 +73,15 @@ CUDA_ARCH ?= sm_75
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
   $(CUDA_HOME)/include/cuda_runtime.h $(CUDA_HOME)/targets/x86_64-linux/include/cuda_runtime.h)))
+ifneq ($(CUDA_INC),)
+CXXFLAGS += -I$(CUDA_INC)
+endif
 # Device linking supports out-of-line helpers; LTO enables cross-file inlining.
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+ifeq ($(DEBUG),1)
+# -G (device debug) cannot be combined with -dlto, so LTO is dropped here
+NVCCFLAGS := $(filter-out -O3 -dlto,$(NVCCFLAGS)) -O0 -g -G
+endif
 ifneq ($(SANITIZER),)
 NVCCFLAGS := $(filter-out -O3,$(NVCCFLAGS)) -O1 -g -Xcompiler=-fno-omit-frame-pointer
 endif
@@ -72,6 +95,8 @@ ifeq ($(RUNNER),)
 RUN_COMMAND :=
 else ifeq ($(RUNNER),valgrind)
 RUN_COMMAND := $(VALGRIND) $(VALGRIND_FLAGS)
+else ifeq ($(RUNNER),compute-sanitizer)
+RUN_COMMAND := $(COMPUTE_SANITIZER) $(COMPUTE_SANITIZER_FLAGS)
 else ifeq ($(RUNNER),gdb)
 RUN_COMMAND := $(GDB) $(GDB_FLAGS)
 else ifeq ($(RUNNER),address)
@@ -85,7 +110,7 @@ $(error RUNNER=thread requires SANITIZER=thread)
 endif
 RUN_COMMAND :=
 else
-$(error RUNNER must be empty, 'valgrind', 'gdb', 'address', or 'thread')
+$(error RUNNER must be empty, 'valgrind', 'compute-sanitizer', 'gdb', 'address', or 'thread')
 endif
 
 ifeq ($(BACKEND),zluda)
@@ -126,7 +151,7 @@ DEPS     := $(OBJS:.o=.d) $(TEST_CPP_OBJS:.o=.d) $(TEST_CU_OBJS:.o=.d)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(LINK) -o $@ $^
+	$(LINK) -o $@ $^ $(LDLIBS)
 
 # -MMD and -MP track header deps
 $(OBJ_DIR)/%.o: %.cpp
@@ -140,10 +165,10 @@ $(OBJ_DIR)/%.cu.o: %.cu
 # `make <test-name>` builds a test source into build/tests/<test-name>
 # (linked against all non-main sources); `make run-<test-name>` also runs it.
 $(TEST_CPP_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_OBJS)
-	$(TEST_LINK) -o $@ $^
+	$(TEST_LINK) -o $@ $^ $(LDLIBS)
 
 $(TEST_CU_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.cu.o $(LIB_OBJS)
-	$(TEST_LINK) -o $@ $^
+	$(TEST_LINK) -o $@ $^ $(LDLIBS)
 
 $(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
 
@@ -175,11 +200,14 @@ help:
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
+	@echo "  RUNNER=compute-sanitizer  run any run* target under NVIDIA Compute Sanitizer (memcheck by default)"
 	@echo "  RUNNER=gdb          launch any run* target in GDB"
+	@echo "  DEBUG=1             build unoptimized with debug info (-O0 -g, -G for CUDA) into build/debug/"
 	@echo "  SANITIZER=address   build with AddressSanitizer (separate build/address/)"
 	@echo "  SANITIZER=thread    build with ThreadSanitizer (separate build/thread/)"
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
 	@echo "  VALGRIND_FLAGS=...      override Valgrind options"
+	@echo "  COMPUTE_SANITIZER_FLAGS=...  override Compute Sanitizer options (default: --tool memcheck)"
 	@echo "  GDB_FLAGS=...           override GDB options"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
 	@echo "  clean               remove build/ and $(TARGET)"
@@ -190,7 +218,8 @@ help:
 	@echo
 	@echo "Variables (override as make VAR=value):"
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
-	@echo "  RUNNER=$(RUNNER)  valgrind | gdb | address | thread"
+	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
+	@echo "  DEBUG=$(DEBUG)            0 | 1 (1 = unoptimized debug build)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"

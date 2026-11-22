@@ -14,15 +14,15 @@ std::chrono::steady_clock::duration recent_tick_times[TICK_HIST];
 
 // TODO: variable tick rate
 enum TickRate : std::uint16_t { // Measured in ms per tick
-  OneTPS = 1000,
-  TwoTPS = 500,
-  FiveTPS = 200,
-  TenTPS = 100,
-  ThirtyTPS = 34,
-  SixtyTPS = 17,
-  Unlimited = 0,
+  ONE_TPS = 1000,
+  TWO_TPS = 500,
+  FIVE_TPS = 200,
+  TEN_TPS = 100,
+  THIRTY_TPS = 34,
+  SIXTY_TPS = 17,
+  UNLIMITED = 0,
 };
-TickRate tick_rate = TickRate::SixtyTPS;
+TickRate tick_rate = TickRate::SIXTY_TPS;
 
 std::chrono::steady_clock::duration averageTickTime(size_t interval) {
   std::chrono::steady_clock::duration total = std::chrono::steady_clock::duration::zero();
