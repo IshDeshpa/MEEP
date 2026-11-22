@@ -10,6 +10,7 @@
 #include <tuple>
 
 using coord = glm::ivec3;
+// using TickRate = std::uint16_t; // Measured in ms per tick
 
 // TODO: reserve the highest material IDs for debug elements.
 enum class Element : std::uint8_t {
@@ -39,6 +40,7 @@ struct WorldState {
   Cell* world; // Padded initialization image on the CPU; not a live GPU mirror.
   Cell* d_curr;
   Cell* d_next;
+  cudaStream_t world_tick_stream;
 
   std::tuple<size_t, size_t, size_t> validateWorldFile(const char* f);
   WorldState(std::tuple<size_t, size_t, size_t> dims);

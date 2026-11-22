@@ -96,6 +96,7 @@ WorldState::WorldState(std::tuple<size_t, size_t, size_t> dims)
     }
 
     try {
+        CUDA_CHECK(cudaStreamCreate(&world_tick_stream));
         CUDA_CHECK(cudaMalloc(&d_curr, bytes));
         CUDA_CHECK(cudaMalloc(&d_next, bytes));
         CUDA_CHECK(cudaMemcpy(d_curr, initial.get(), bytes, cudaMemcpyHostToDevice));
@@ -198,7 +199,7 @@ void WorldState::updateWorld(std::size_t tick, LUT& lut) {
         return;
 
     const size_t blocks = 1 + (tile_count - 1) / THREADS_PER_BLOCK;
-    updateTile<<<blocks, THREADS_PER_BLOCK>>>(
+    updateTile<<<blocks, THREADS_PER_BLOCK, 0, world_tick_stream>>>(
         deviceView(), lut.deviceView(), tiles_y, tiles_z, tile_count,
         tile_phase, face_phase);
     CUDA_CHECK(cudaGetLastError()); // Checks submission, not GPU completion.
@@ -207,7 +208,7 @@ void WorldState::updateWorld(std::size_t tick, LUT& lut) {
 void WorldState::waitForTick() {
     // Launches currently use the default stream. Move both launch and wait
     // to a dedicated simulation stream before overlapping GPU rendering.
-    CUDA_CHECK(cudaStreamSynchronize(nullptr));
+    CUDA_CHECK(cudaStreamSynchronize(world_tick_stream));
 }
 
 void WorldState::swapBuffers() {
