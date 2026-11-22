@@ -17,7 +17,7 @@ public:
   // Block until the user closes the window
   void join();
 
-  static constexpr bool isPressed(const char c, std::bitset<256> state){
+  static bool isPressed(const char c, const std::bitset<256>& state){
     KeySym s = XStringToKeysym(std::string(1, c).c_str());
 
     KeySym lower = NoSymbol;

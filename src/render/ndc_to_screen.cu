@@ -1,8 +1,8 @@
 #include "render/render.hpp"
 
 
-// x = (CAMERA_SCREEN_WIDTH / 2) * (x + 1);
-// y = (CAMERA_SCREEN_HEIGHT / 2) * (1 - y);
+// x = (SCREEN_WIDTH / 2) * (x + 1);
+// y = (SCREEN_HEIGHT / 2) * (1 - y);
 
 void ndcToScreenLaunch(){
     Renderer &r = Renderer::instance();
@@ -40,7 +40,7 @@ MEEP_GLOBAL void ndcToScreen(const Vertex* verts, Vertex2D *verts2d, std::size_t
         return;
     }
 
-    verts2d[idx].x = (static_cast<float>(CAMERA_SCREEN_WIDTH) / 2) * (verts[idx].x + 1);
-    verts2d[idx].y = (static_cast<float>(CAMERA_SCREEN_HEIGHT) / 2) * (1 - verts[idx].y);
+    verts2d[idx].x = (static_cast<float>(SCREEN_WIDTH) / 2) * (verts[idx].x + 1);
+    verts2d[idx].y = (static_cast<float>(SCREEN_HEIGHT) / 2) * (1 - verts[idx].y);
 
 }

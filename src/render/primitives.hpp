@@ -10,6 +10,7 @@
 #include <strings.h>
 #include <type_traits>
 #include <vector>
+#include <bit>
 #include "extra/cuda_compat.hpp"
 #include "extra/cuda_raii.hpp"
 #include "extra/enum_lut.hpp"
@@ -46,7 +47,7 @@ struct Color {
   uint8_t r; uint8_t g; uint8_t b; uint8_t a;
 
   constexpr unsigned maskToShift(unsigned mask){
-    return ffs(mask) - 1; // find first bit set; also "for fuck's sake"
+    return std::countr_zero(mask); // find first bit set
   }
   constexpr unsigned maskToSize(unsigned mask){
     return std::popcount(mask); // number of bits set in the mask

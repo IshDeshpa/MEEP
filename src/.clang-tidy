@@ -1,5 +1,6 @@
-# Only enforce naming conventions.
-Checks: '-*,readability-identifier-naming'
+# Enforce naming conventions and direct includes for referenced symbols.
+Checks: '-*,readability-identifier-naming,misc-include-cleaner'
+WarningsAsErrors: 'misc-include-cleaner'
 # Check our own headers but never the vendored glm sources.
 HeaderFilterRegex: '.*'
 ExcludeHeaderFilterRegex: '(^|/)glm/'
