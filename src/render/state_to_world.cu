@@ -30,7 +30,7 @@ void stateToWorldLaunch(WorldState &ws){
   std::size_t blocks = (world_size + threads_per_block - 1) / threads_per_block;
   isVisible<<<blocks, threads_per_block, 0, r.render_stream>>>(ws.device_view, face_bitmasks.data());
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   // cudaDeviceSynchronize();
   // std::vector<uint8_t> visible_host(world_size);
   // CUDA_CHECK(cudaMemcpy(visible_host.data(), face_bitmasks.data(), world_size * sizeof(uint8_t), cudaMemcpyDeviceToHost));
@@ -43,7 +43,7 @@ void stateToWorldLaunch(WorldState &ws){
 
   unsigned num_refs = scanByteNaiveLaunch(face_bitmasks, offsets, blocks, threads_per_block);
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   // cudaDeviceSynchronize();
   // std::vector<uint32_t> offsets_host(world_size);
   // CUDA_CHECK(cudaMemcpy(offsets_host.data(), offsets.data(), world_size * sizeof(uint32_t), cudaMemcpyDeviceToHost));
@@ -59,7 +59,7 @@ void stateToWorldLaunch(WorldState &ws){
 
   cudaDeviceSynchronize();
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   std::vector<CellRenderEntity> cre_host(num_refs);
   CUDA_CHECK(cudaMemcpy(cre_host.data(), r.entities->data(), num_refs * sizeof(CellRenderEntity), cudaMemcpyDeviceToHost));
 

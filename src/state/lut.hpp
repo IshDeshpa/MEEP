@@ -7,6 +7,12 @@
 
 // Four material IDs, ordered top-left, top-right, bottom-left, bottom-right.
 using FaceETile = std::uint16_t;
+
+#ifndef MEEP_SRC_DIR
+#define MEEP_SRC_DIR "src"
+#endif
+inline constexpr char ALPHA_LUT_PATH[] = MEEP_SRC_DIR "/build/lut_alpha.bin";
+
 #define FACE_LUT_ELEMS (UINT16_MAX + 1)
 #define FACE_LUT_SIZE (UINT16_MAX + 1) * sizeof(FaceETile)
 

@@ -24,12 +24,12 @@ static_assert(FACE_TRANSITION && !CUBE_TRANSITION,
 std::tuple<size_t, size_t, size_t> WorldState::validateWorldFile(const char* f) {
     std::filesystem::path path(f);
     if (!std::filesystem::exists(path)) {
-        throw std::runtime_error("LUT file does not exist: " + path.string());
+        throw std::runtime_error("World file does not exist: " + path.string());
     }
 
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        throw std::runtime_error("Failed to open LUT file: " + path.string());
+        throw std::runtime_error("Failed to open world file: " + path.string());
     }
 
     // Read the dimensions from the file

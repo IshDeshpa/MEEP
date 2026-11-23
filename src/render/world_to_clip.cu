@@ -37,7 +37,7 @@ void worldToClipLaunch(){
   generateTris<<<blocks, threads_per_block, 0, r.render_stream>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
   cudaDeviceSynchronize();
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   std::vector<Vertex> host_verts(r.verts->size());
   CUDA_CHECK(cudaMemcpy(host_verts.data(), r.verts->data(), r.verts->size() * sizeof(Vertex), cudaMemcpyDeviceToHost));
 

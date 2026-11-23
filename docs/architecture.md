@@ -113,8 +113,14 @@ visible coordinate mapping; index(coord) and operator()(coord) also accept
 the signed -1/high-edge halo needed for renderer neighbor queries and reject
 coordinates outside it. Const WorldState access returns const Cell&.
 These accessors read the CPU initialization image, not a synchronized live copy.
-The shell must not become rendered voxels or shift
-visible-world positions. Live-world rendering is not yet integrated.
+The shell must not become rendered voxels or shift visible-world positions.
+Main constructs a blank AIR world by default (100x100x100, configurable with
+`-n/-m/-k`). Only `--world FILE` selects a serialized scene; file dimensions and
+dimension options are mutually exclusive. The included WATER scene is named
+`src/worlds/world_water_100x1x100.bin`. All saved scenes and world generator
+outputs live in `src/worlds/`; the generator uses the
+`world_<element>_<n>x<m>x<k>.bin` naming convention by default, with an optional
+output filename in that directory.
 
 Partition phase 0/1 refers to origins in padded coordinates. Every visible cell
 belongs to a complete tile in both phases, for positive even or odd dimensions.
@@ -131,8 +137,12 @@ The existing world_padding test covers visible/padded indexing and tile helper
 access, but its call sites and identity-rule fixture need adaptation to the LUT
 API before that target can run again.
 
-The blank-world regression is `make -C src run-world_blank`, using the actual
-`src/state/la.bin` by default (override with `ARGS=/absolute/path/to/rules.bin`).
+The blank-world regression is `make -C src run-world_blank`, defaulting to the
+generated `src/build/lut_alpha.bin` (override with
+`ARGS=/absolute/path/to/rules.bin`). `make run` passes the same alpha path with
+`--lut`; the application accepts a runtime `--lut FILE` override without
+rebuilding. Both run targets generate alpha if missing or older than its
+generator. Direct application execution also defaults to the alpha path.
 It checks all AIR/BLOCK reference faces, exact LUT upload, both initial GPU
 buffers, and seven ticks on 1x1x1, 3x4x5, 10x14x18, and 100x100x100 worlds.
 Destination interiors are poisoned before each tick to expose missing writes;
@@ -265,7 +275,8 @@ Source: [CUDA class and kernel restrictions](https://docs.nvidia.com/cuda/cuda-p
 ## Tick pacing
 
 worldTick remains a CPU loop. TickRate is a float measured in ticks per second;
-zero means Unlimited. TickRates provides named defaults from one through sixty
+TickSource treats zero as unpaced, while the application's world/render loops
+currently disable work at nonpositive rates. TickRates provides named defaults from one through sixty
 ticks per second. Each iteration derives its period from the configured rate,
 records a steady-clock start, submits updateWorld, waits for GPU completion
 through WorldState::waitForTick, calls swapBuffers, and increments the completed tick counter.
@@ -273,24 +284,24 @@ For nonzero periods it calls std::this_thread::sleep_until(start + period).
 The effective remaining sleep is max(0, period - elapsed), including GPU work.
 
 Overruns start the next iteration immediately without accumulated catch-up
-ticks. Unlimited removes deliberate pacing but still waits for each GPU tick,
-bounding outstanding simulation work to one tick. OS scheduling can wake a
+ticks. Each submitted tick waits for completion, bounding outstanding
+simulation work to one tick. OS scheduling can wake a
 sleeping thread late. The named thirty and sixty tick-rate defaults target
 exactly 30 and 60 ticks/s before scheduler delay and timing granularity.
 
-waitForTick currently synchronizes the same default CUDA stream used by
+waitForTick currently synchronizes the dedicated simulation CUDA stream used by
 updateWorld and checks asynchronous errors. It is not a device-wide wait,
-but legacy-default-stream dependencies can still couple it to other work.
-Use a dedicated simulation stream and explicit rendering handoffs before
-expecting independent GPU simulation/rendering. A separate CPU thread alone
+but blocking-stream dependencies can still couple it to other work.
+Main serializes simulation and rendering with a frame-ready/frame-rendered
+handoff. A separate CPU thread alone
 does not establish GPU independence or pin that thread to a CPU core.
 
-The ticker is still not started by main, which currently requests lut.bin
-relative to its working directory. Default padded-state upload, material LUT
-calls, and the post-wait swapBuffers operation are implemented. Scene loading
-remains unfinished. A future
-cross-thread tick-rate setter needs atomic or locked access; the current rate
-is a plain global read by the ticker.
+Main starts the world, render, and input threads. Its world/render loops treat
+nonpositive configured tick rates as disabled. With world ticking disabled,
+the renderer also waits because no frame-ready signal is sent. Default padded
+state upload, material LUT calls, post-wait swapBuffers, and explicit scene
+loading are implemented. A future cross-thread tick-rate setter needs atomic
+or locked access; the current defaults are compile-time constants.
 
 References: [C++ thread sleeping](https://eel.is/c++draft/thread.thread.this)
 and [CUDA stream synchronization](https://docs.nvidia.com/cuda/cuda-programming-guide/03-advanced/advanced-host-programming.html#more-on-streams-and-events).

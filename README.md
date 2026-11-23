@@ -26,10 +26,45 @@ coordinates through DeviceWorldView; padding and strides are handled internally.
 The renderer's signed coordinate access also supports the padded halo.
 Face types, packing helpers, binary LUT loading, and device lookup live in
 `src/state/lut.hpp/cu`. World ticks use the LUT; `worldTick` waits for completion
-and calls `swapBuffers`. Scene loading, rendering integration, and starting the
-ticker from main are still being completed. See the [architecture model](docs/architecture.md).
+and calls `swapBuffers`. Main constructs a blank world, loads a LUT, and starts the
+tick/render threads. See the [architecture model](docs/architecture.md).
 
-`make -C src run-world_blank` loads `src/state/la.bin` and checks seven GPU ticks
+From `src/`, `make run` constructs a 100x100x100 blank AIR world with a BLOCK
+shell. Use `make run ARGS="-n 20 -m 10 -k 30"` to change blank dimensions, or
+`make run ARGS="--world worlds/world_water_100x1x100.bin"` to explicitly load the
+included WATER scene. File worlds supply their own dimensions; combining
+`--world` with dimension options is an error. Saved worlds live in `src/worlds/`.
+The `gen_world` tool writes there regardless of the working directory, using
+descriptive filenames such as `world_water_100x1x100.bin`:
+`make run-gen_world ARGS=water` (an optional output filename is accepted).
+
+`make lut` (or `make alpha-lut`) generates `build/lut_alpha.bin` from `state/lut_gen_alpha.py`
+(65,536 little-endian uint16 entries, 128 KiB). Application and blank-world test
+builds generate it automatically when missing or older than the generator.
+`make run` explicitly passes that alpha LUT at runtime; `run-world_blank` also
+defaults to alpha. The application accepts `--lut FILE` to select another
+compatible table without rebuilding, for example
+`./main --lut /absolute/path/to/rules.bin` or
+`make run ARGS="--lut /absolute/path/to/rules.bin"`. Direct `./main` execution
+also defaults to alpha using its absolute source-tree path. The old `src/lut.bin`
+is unused unless explicitly selected at runtime.
+
+Debug levels are selected with `make DEBUG=<level>` (also works with `run`):
+
+| Level | Defined flags | Behavior | Objects |
+| --- | --- | --- | --- |
+| `0` (default) | None | Optimized release | `build/` |
+| `1` | `MEEP_DEBUG` | General debugging, including tick diagnostics | `build/debug-1/` |
+| `2` | `MEEP_DEBUG`, `MEEP_DEBUG_RENDER_TRACE` | General debugging plus renderer buffer dumps and per-frame PPM writes | `build/debug-2/` |
+
+The flag lists live together in `DEBUG_FLAGS_<level>` at the top of
+`src/Makefile`. Level 2 inherits level 1. Add a flag to the appropriate row, or
+add a row for another level; validation, compiler definitions, build directories,
+and `make help` derive from that table. Changing flag lists rebuilds affected
+objects, and switching levels relinks `main` automatically. All nonzero levels
+use `-O0 -g` and CUDA `-G`, which still has a performance cost.
+
+`make run-world_blank` loads the alpha LUT and checks seven GPU ticks
 on four blank worlds, including 100x100x100. It verifies AIR interiors, BLOCK
 padding, state bits, output coverage, LUT upload, and buffer parity using
 `updateWorld`, `waitForTick`, and `swapBuffers`. Supply another LUT with

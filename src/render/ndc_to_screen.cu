@@ -16,7 +16,7 @@ void ndcToScreenLaunch(){
     ndcToScreen<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.verts2d->data(), num_verts);
     cudaDeviceSynchronize();
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
     std::vector<Vertex2D> host_verts2d(num_verts);
     CUDA_CHECK(cudaMemcpy(host_verts2d.data(), r.verts2d->data(), num_verts * sizeof(Vertex2D), cudaMemcpyDeviceToHost));
 

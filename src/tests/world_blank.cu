@@ -11,10 +11,6 @@
 #include <utility>
 #include <vector>
 
-#ifndef MEEP_SRC_DIR
-#define MEEP_SRC_DIR "src"
-#endif
-
 namespace {
 void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
@@ -124,7 +120,7 @@ int main(int argc, char* argv[]) {
         require(argc <= 2, "Usage: world_blank [LUT path]");
         const std::filesystem::path file_path = argc == 2
             ? std::filesystem::path(argv[1])
-            : std::filesystem::path(MEEP_SRC_DIR) / "state/la.bin";
+            : std::filesystem::path(ALPHA_LUT_PATH);
         const auto rules = readRules(file_path);
         const size_t sizes[][3] = {{1, 1, 1}, {3, 4, 5}, {10, 14, 18}, {100, 100, 100}};
         for (const auto& size : sizes)

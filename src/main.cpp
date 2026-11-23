@@ -50,7 +50,7 @@ void inputUpdate(GameWindow& window, Camera& camera){
     camera.moveRight(PLAYER_SPEED);
   }
 
-  if(window.isPressed('w', keys)){
+  if(window.isPressed('s', keys)){
     camera.moveForward(-PLAYER_SPEED);
   }
 
@@ -69,6 +69,10 @@ void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera) {
 
 void worldTick(std::stop_token stop_token) {
   while (!stop_token.stop_requested()) {
+    if (WORLD_TICK_RATE <= 0.0F) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
     time_point start = Clock::now();
 
     world->updateWorld(world_tick.counter, *lut);
@@ -97,6 +101,10 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
     camera.setPose(pos, glm::normalize(target - pos));
 
     while (!stop_token.stop_requested()) {
+      if (RENDER_TICK_RATE <= 0.0F) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
       std::unique_lock lock(render_sync_mutex);
       if (!render_sync.wait(lock, stop_token, [] { return frame_ready; })) {
         return;
@@ -129,16 +137,34 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
 
 int main(int argc, char* argv[]){
   size_t n = 100, m = 100, k = 100;
+  const char* world_path = nullptr;
+  const char* lut_path = ALPHA_LUT_PATH;
+  bool dimensions_given = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string_view option = argv[i];
     if (option == "--help" || option == "-h") {
       std::cout << "Usage: " << argv[0]
-                << " [-n N] [-m M] [-k K]\n"
+                << " [--lut FILE] ([-n N] [-m M] [-k K] | --world FILE)\n"
+                << "Default world: blank AIR interior, 100x100x100.\n"
+                << "Dimensions apply to constructed worlds; --world uses the file dimensions.\n"
+                << "Default LUT: " << ALPHA_LUT_PATH << '\n'
                 << "Aliases: -x for -n, -y for -m, -z for -k.\n"
-                << "Visible dimensions must be positive integers; each defaults to 100.\n"
                 << "Storage adds one BLOCK cell on each side (+2 per dimension).\n";
       return 0;
+    }
+
+    if (option == "--world" || option == "--lut") {
+      if (++i == argc) {
+        std::cerr << "Missing value for " << option << '\n';
+        return 1;
+      }
+      if (option == "--world") {
+        world_path = argv[i];
+      } else {
+        lut_path = argv[i];
+      }
+      continue;
     }
 
     size_t* dimension = nullptr;
@@ -166,12 +192,26 @@ int main(int argc, char* argv[]){
       return 1;
     }
     *dimension = parsed;
+    dimensions_given = true;
+  }
+
+  if (world_path && dimensions_given) {
+    std::cerr << "Use either --world FILE or dimension options; file worlds contain their own dimensions.\n";
+    return 1;
   }
 
   try {
-    //world = std::make_unique<WorldState>(n, m, k);
-    world = std::make_unique<WorldState>("world.bin");
-    lut = std::make_unique<LUT>("lut.bin");
+    std::cout << "Loading LUT: " << lut_path << std::endl;
+    lut = std::make_unique<LUT>(lut_path);
+    if (world_path) {
+      std::cout << "Loading world: " << world_path << std::endl;
+      world = std::make_unique<WorldState>(world_path);
+    } else {
+      world = std::make_unique<WorldState>(n, m, k);
+      std::cout << "Constructed blank AIR world";
+    }
+    std::cout << " (" << world->n << 'x' << world->m << 'x' << world->k
+              << ", plus BLOCK shell)" << std::endl;
 
     GameWindow& window = GameWindow::instance();
     Renderer& renderer = Renderer::instance();

@@ -5,12 +5,14 @@
 #include <stdexcept>
 
 void CellRenderEntity::print() const {
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   const CellRef &cr = cell_ref;
   std::printf("CellRenderEntity{elem=%u state=%u coords=(%d %d %d) color=(%u %u %u %u)}\n",
     static_cast<unsigned>(cr.cell.elem), static_cast<unsigned>(cr.cell.state),
     cr.coords.x, cr.coords.y, cr.coords.z,
     static_cast<unsigned>(color.r), static_cast<unsigned>(color.g),
     static_cast<unsigned>(color.b), static_cast<unsigned>(color.a));
+#endif
 }
 
 HostCube &HostCube::instance(){

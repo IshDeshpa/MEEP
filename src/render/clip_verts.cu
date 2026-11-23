@@ -17,7 +17,7 @@ void clipVertsLaunch() {
     clipVertsByNear<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.tris->data(), num_entities);
     cudaDeviceSynchronize();
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
     std::size_t verts_sz = r.verts->size();   // full 2x capacity, so you see real + headroom
     std::size_t tris_sz  = r.tris->size();
 

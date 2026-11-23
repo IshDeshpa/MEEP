@@ -1,19 +1,31 @@
 CXX      := g++
 GLM_DIR  := glm
 OBJ_DIR  := build
+PYTHON   ?= python3
+# Shared by normal/debug builds; this is generated data, not an object file.
+ALPHA_LUT := build/lut_alpha.bin
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
 MODULES  := render state extra window tick
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
-# DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into
-# build/debug/; DEBUG=0 (default) is the normal optimized build.
-DEBUG    ?= 1
-ifneq ($(filter-out 0 1,$(DEBUG)),)
-$(error DEBUG must be 0 or 1, got '$(DEBUG)')
-endif
+# Debug flag table. Add flags to a row; higher rows explicitly inherit lower
+# rows. Add another DEBUG_FLAGS_<level> row to introduce a level; validation,
+# compiler definitions, build directories, and help pick it up automatically.
+DEBUG_FLAGS_0 :=
+DEBUG_FLAGS_1 := MEEP_DEBUG
+DEBUG_FLAGS_2 := $(DEBUG_FLAGS_1) MEEP_DEBUG_RENDER_TRACE
 
-DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"' -DMEEP_DEBUG=$(DEBUG)
+DEBUG    ?= 0
+DEBUG_LEVELS := $(sort $(patsubst DEBUG_FLAGS_%,%,$(filter DEBUG_FLAGS_%,$(.VARIABLES))))
+ifeq ($(filter $(DEBUG),$(DEBUG_LEVELS)),)
+$(error DEBUG must be one of [$(DEBUG_LEVELS)], got '$(DEBUG)')
+endif
+DEBUG_FLAGS := $(DEBUG_FLAGS_$(DEBUG))
+
+DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
+# tick.hpp uses #ifdef, so MEEP_DEBUG must be absent at DEBUG=0.
+DEFINES += $(addprefix -D,$(addsuffix =1,$(DEBUG_FLAGS)))
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 # libraries go after the objects on the link line, so they are kept by the linker
@@ -29,14 +41,14 @@ GDB_FLAGS ?= --args
 COMPUTE_SANITIZER ?= compute-sanitizer
 COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
 
-ifeq ($(DEBUG),1)
-OBJ_DIR := build/debug
+ifneq ($(DEBUG),0)
+OBJ_DIR := build/debug-$(DEBUG)
 CXXFLAGS := $(filter-out -O3,$(CXXFLAGS)) -O0 -g
 endif
 
 # Keep sanitizer objects separate so changing SANITIZER never reuses stale objects.
 ifneq ($(SANITIZER),)
-OBJ_DIR := build/$(SANITIZER)
+OBJ_DIR := build/$(SANITIZER)$(if $(filter-out 0,$(DEBUG)),/debug-$(DEBUG))
 CXXFLAGS := $(filter-out -O3,$(CXXFLAGS)) -O1 -g -fno-omit-frame-pointer
 endif
 ifeq ($(SANITIZER),address)
@@ -78,7 +90,7 @@ CXXFLAGS += -I$(CUDA_INC)
 endif
 # Device linking supports out-of-line helpers; LTO enables cross-file inlining.
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
-ifeq ($(DEBUG),1)
+ifneq ($(DEBUG),0)
 # -G (device debug) cannot be combined with -dlto, so LTO is dropped here
 NVCCFLAGS := $(filter-out -O3 -dlto,$(NVCCFLAGS)) -O0 -g -G
 endif
@@ -150,8 +162,35 @@ DEPS     := $(OBJS:.o=.d) $(TEST_CPP_OBJS:.o=.d) $(TEST_CU_OBJS:.o=.d)
 
 all: $(TARGET)
 
-$(TARGET): $(OBJS)
-	$(LINK) -o $@ $^ $(LDLIBS)
+# All modes publish the same main executable, so relink when switching modes
+# even when that mode's existing objects are older than the current executable.
+$(TARGET): $(OBJS) build/main.mode | $(ALPHA_LUT)
+	$(LINK) -o $@ $(OBJS) $(LDLIBS)
+
+build/main.mode: force-main-mode
+	@mkdir -p $(dir $@)
+	@printf '%s\n' 'DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS)' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+
+force-main-mode:
+
+# Changing a row in the flag table must also rebuild that level's objects.
+$(OBJ_DIR)/debug.flags: force-main-mode
+	@mkdir -p $(dir $@)
+	@printf '%s\n' '$(DEBUG_FLAGS)' > $@.tmp
+	@cmp -s $@.tmp $@ || mv $@.tmp $@
+	@rm -f $@.tmp
+
+$(OBJS) $(TEST_CPP_OBJS) $(TEST_CU_OBJS): $(OBJ_DIR)/debug.flags
+
+lut: $(ALPHA_LUT)
+
+alpha-lut: $(ALPHA_LUT)
+
+$(ALPHA_LUT): state/lut_gen_alpha.py
+	@mkdir -p $(dir $@)
+	$(PYTHON) $< $@
 
 # -MMD and -MP track header deps
 $(OBJ_DIR)/%.o: %.cpp
@@ -170,13 +209,15 @@ $(TEST_CPP_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.o $(LIB_
 $(TEST_CU_TARGETS): $(OBJ_DIR)/$(TEST_DIR)/%: $(OBJ_DIR)/$(TEST_DIR)/%.cu.o $(LIB_OBJS)
 	$(TEST_LINK) -o $@ $^ $(LDLIBS)
 
+$(OBJ_DIR)/$(TEST_DIR)/world_blank: | $(ALPHA_LUT)
+
 $(TEST_NAMES): %: $(OBJ_DIR)/$(TEST_DIR)/%
 
-$(TEST_NAMES:%=run-%): run-%: %
-	$(RUN_ENV) $(RUN_COMMAND) ./$(OBJ_DIR)/$(TEST_DIR)/$* $(ARGS)
+$(TEST_NAMES:%=run-%): run-%: % | $(ALPHA_LUT)
+	$(RUN_ENV) $(RUN_COMMAND) ./$(OBJ_DIR)/$(TEST_DIR)/$* $(if $(filter world_blank,$*),$(if $(strip $(ARGS)),$(ARGS),"$(abspath $(ALPHA_LUT))"),$(ARGS))
 
-run: $(TARGET)
-	$(RUN_ENV) $(RUN_COMMAND) ./$(TARGET) $(ARGS)
+run: $(TARGET) | $(ALPHA_LUT)
+	$(RUN_ENV) $(RUN_COMMAND) ./$(TARGET) --lut "$(abspath $(ALPHA_LUT))" $(ARGS)
 
 # rename parameters/locals to match .clang-tidy
 # one clang-tidy job per source file, so `make -jN format` runs N of them at once
@@ -196,13 +237,15 @@ $(FORMAT_CU_TARGETS): format/%.cu: %.cu
 help:
 	@echo "Targets:"
 	@echo "  all                 build $(TARGET) (default)"
-	@echo "  run                 build and run $(TARGET)"
+	@echo "  run                 build and run $(TARGET) with the alpha LUT (ARGS can override --lut)"
+	@echo "  lut                 generate/update the alpha LUT"
+	@echo "  alpha-lut           generate/update $(ALPHA_LUT) from the alpha rules (no CUDA needed)"
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
 	@echo "  RUNNER=compute-sanitizer  run any run* target under NVIDIA Compute Sanitizer (memcheck by default)"
 	@echo "  RUNNER=gdb          launch any run* target in GDB"
-	@echo "  DEBUG=1             build unoptimized with debug info (-O0 -g, -G for CUDA) into build/debug/"
+	@echo "  DEBUG=<level>       select flags from the table below; nonzero levels use -O0 -g and CUDA -G"
 	@echo "  SANITIZER=address   build with AddressSanitizer (separate build/address/)"
 	@echo "  SANITIZER=thread    build with ThreadSanitizer (separate build/thread/)"
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
@@ -219,7 +262,7 @@ help:
 	@echo "Variables (override as make VAR=value):"
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
-	@echo "  DEBUG=$(DEBUG)            0 | 1 (1 = unoptimized debug build)"
+	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"
@@ -231,12 +274,17 @@ help:
 	@echo "  CUDA_INC=$(CUDA_INC)"
 	@echo "  CUDA_ARCH=$(CUDA_ARCH)"
 	@echo "  NVCC=$(NVCC)"
+	@echo
+	@echo "Debug levels (edit DEBUG_FLAGS_<level> at the top of this Makefile):"
+	@printf '  %s\n' $(foreach level,$(DEBUG_LEVELS),'DEBUG=$(level): $(if $(strip $(DEBUG_FLAGS_$(level))),$(DEBUG_FLAGS_$(level)),(no debug flags))')
+	@echo "Selected: DEBUG=$(DEBUG), flags=$(if $(strip $(DEBUG_FLAGS)),$(DEBUG_FLAGS),(none)), objects=$(OBJ_DIR)"
 
 clean:
 	rm -rf build $(TARGET)
 
 -include $(DEPS)
 
-.SECONDARY:
+# Preserve compiled intermediates, but let missing runtime data be regenerated.
+.SECONDARY: $(OBJS) $(TEST_CPP_OBJS) $(TEST_CU_OBJS) $(TEST_CPP_TARGETS) $(TEST_CU_TARGETS)
 
-.PHONY: all run $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean
+.PHONY: all run lut alpha-lut force-main-mode $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean

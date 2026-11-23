@@ -27,7 +27,7 @@ void rasterizeLaunch() {
 
     CUDA_CHECK(cudaMemcpy(camera.framebuffer.data(), screen.framebuffer, screen.WIDTH * screen.HEIGHT * sizeof(Color), cudaMemcpyDeviceToHost));
 
-#if (MEEP_DEBUG == 1)
+#if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
     std::size_t colored_pixels = 0;
 
     for (const Color& pixel : camera.framebuffer) {
@@ -56,9 +56,6 @@ void rasterizeLaunch() {
                static_cast<unsigned>(color.b),
                static_cast<unsigned>(color.a));
     }
-#endif
-
-#if (MEEP_DEBUG == 1)
     std::ofstream image("render_debug.ppm", std::ios::binary);
     if (!image)
         throw std::runtime_error("Cannot open render_debug.ppm");

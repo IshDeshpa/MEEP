@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -30,13 +31,14 @@ constexpr std::array ELEMENTS{
     ElementName{"void", Element::VOID},
 };
 
-bool parseElement(std::string value, Element& element) {
+bool parseElement(std::string value, Element& element, std::string_view& element_name) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
   for (const ElementName& candidate : ELEMENTS) {
     if (value == candidate.name) {
       element = candidate.element;
+      element_name = candidate.name;
       return true;
     }
   }
@@ -45,8 +47,9 @@ bool parseElement(std::string value, Element& element) {
 
 void printUsage(const char* program) {
   std::cerr << "Usage: " << program
-            << " <air|water|earth|lava|block|emitter|void> [output-file]\n"
-            << "Writes a 100x1x100 world filled with the selected element.\n";
+            << " <air|water|earth|lava|block|emitter|void> [output-filename]\n"
+            << "Writes a 100x1x100 world filled with the selected element.\n"
+            << "Writes into src/worlds/; default filename: world_<element>_100x1x100.bin\n";
 }
 
 } // namespace
@@ -58,13 +61,29 @@ int main(int argc, char* argv[]) {
   }
 
   Element element{};
-  if (!parseElement(argv[1], element)) {
+  std::string_view element_name;
+  if (!parseElement(argv[1], element, element_name)) {
     std::cerr << "Unknown element: " << argv[1] << '\n';
     printUsage(argv[0]);
     return 1;
   }
 
-  const char* output_path = argc == 3 ? argv[2] : "world.bin";
+  const std::filesystem::path output_name = argc == 3 ? argv[2]
+      : "world_" + std::string(element_name) + "_" + std::to_string(WORLD_N) +
+            "x" + std::to_string(WORLD_M) + "x" + std::to_string(WORLD_K) + ".bin";
+  if (output_name.empty() || output_name.has_parent_path() ||
+      output_name == "." || output_name == "..") {
+    std::cerr << "Output must be a filename without directories; worlds are saved in src/worlds/\n";
+    return 1;
+  }
+  const std::filesystem::path worlds_dir = std::filesystem::path(MEEP_SRC_DIR) / "worlds";
+  std::error_code directory_error;
+  std::filesystem::create_directories(worlds_dir, directory_error);
+  if (directory_error) {
+    std::cerr << "Could not create " << worlds_dir << ": " << directory_error.message() << '\n';
+    return 1;
+  }
+  const auto output_path = worlds_dir / output_name;
   std::vector<Cell> cells(WORLD_N * WORLD_M * WORLD_K, Cell{element, 0});
 
   std::ofstream output(output_path, std::ios::binary);
@@ -84,6 +103,6 @@ int main(int argc, char* argv[]) {
   }
 
   std::cout << "Wrote " << output_path << ": " << WORLD_N << 'x' << WORLD_M
-            << 'x' << WORLD_K << " filled with " << argv[1] << " cells\n";
+            << 'x' << WORLD_K << " filled with " << element_name << " cells\n";
   return 0;
 }
