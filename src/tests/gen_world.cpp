@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  const char* output_path = argc == 3 ? argv[2] : "world_100x1x100.bin";
+  const char* output_path = argc == 3 ? argv[2] : "world.bin";
   std::vector<Cell> cells(WORLD_N * WORLD_M * WORLD_K, Cell{element, 0});
 
   std::ofstream output(output_path, std::ios::binary);

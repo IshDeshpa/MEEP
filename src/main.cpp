@@ -169,7 +169,8 @@ int main(int argc, char* argv[]){
   }
 
   try {
-    world = std::make_unique<WorldState>(n, m, k);
+    //world = std::make_unique<WorldState>(n, m, k);
+    world = std::make_unique<WorldState>("world.bin");
     lut = std::make_unique<LUT>("lut.bin");
 
     GameWindow& window = GameWindow::instance();
