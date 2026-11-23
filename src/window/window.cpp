@@ -56,6 +56,13 @@ GameWindow::GameWindow(){
   this->wm_delete = XInternAtom(this->d, "WM_DELETE_WINDOW", False);
   XSetWMProtocols(this->d, this->w, &this->wm_delete, 1);
 
+  XClassHint hint = {
+    .res_name = const_cast<char *>("powder-game-3d"),
+    .res_class = const_cast<char *>("PowderGame3D")
+  };
+  XSetClassHint(this->d, this->w, &hint);
+  XStoreName(this->d, this->w, "Powder Game 3D");
+
   // Ask the server to map the window to the display
   XMapWindow(this->d, this->w);
 
@@ -90,16 +97,36 @@ GameWindow::GameWindow(){
     XNextEvent(this->d, &e);
   } while(e.type != MapNotify);
 
-  XGrabPointer(d, w, True, PointerMotionMask | ButtonPressMask,
-               GrabModeAsync, GrabModeAsync, w, None, CurrentTime);
-  this->focused = true;
+  this->focused = grabInput();
 }
 
 GameWindow::~GameWindow(){
+  releaseInput();
   delete []this->img->data;
   XFreeGC(this->d, this->gc);
   XDestroyWindow(this->d, this->w);
   XCloseDisplay(this->d);
+}
+
+bool GameWindow::grabInput(){
+  if(XGrabPointer(d, w, True, PointerMotionMask | ButtonPressMask,
+                  GrabModeAsync, GrabModeAsync, w, None, CurrentTime) != GrabSuccess){
+    return false;
+  }
+
+  if(XGrabKeyboard(d, w, True, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess){
+    XUngrabPointer(d, CurrentTime);
+    XFlush(d);
+    return false;
+  }
+
+  return true;
+}
+
+void GameWindow::releaseInput(){
+  XUngrabPointer(d, CurrentTime);
+  XUngrabKeyboard(d, CurrentTime);
+  XFlush(d);
 }
 
 void GameWindow::updateScreen(HostScreen &s){
@@ -167,7 +194,7 @@ void GameWindow::join(){
       if (e.xbutton.button == Button1) {
         if(!this->focused){
           // if we're not focused and we detect a click event in the window, refocus and intercept the click event
-          this->focused = true;
+          this->focused = grabInput();
         }
 
         std::lock_guard lock(mouse_click_mutex);
@@ -186,7 +213,7 @@ void GameWindow::join(){
 
       if(XLookupKeysym(&e.xkey, 0) == XK_Escape){
         this->focused = false;
-        XUngrabPointer(d, CurrentTime);
+        releaseInput();
       }
     }
   }

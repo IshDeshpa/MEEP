@@ -43,6 +43,9 @@ private:
   GameWindow();
   ~GameWindow();
 
+  bool grabInput();
+  void releaseInput();
+
   Display *d;
   XVisualInfo *vi;
   int s;
