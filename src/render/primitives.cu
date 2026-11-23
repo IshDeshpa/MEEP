@@ -1,4 +1,5 @@
 #include "render/primitives.hpp"
+#include "render/render.hpp"
 #include <cuda_runtime_api.h>
 #include <cmath>
 #include <utility>
@@ -32,15 +33,16 @@ __host__ __device__ const glm::dmat4 DeviceEntity::toTransform(
 
 // Scan byte array (prefix-sum) and return total of input array as well
 unsigned scanByteNaiveLaunch(DeviceBuffer<uint8_t> &gpu_in, DeviceBuffer<uint32_t> &gpu_out, unsigned blocks, unsigned threads_per_block){
+  Renderer &r = Renderer::instance();
   std::size_t sz = gpu_in.size();
   if(sz == 0) return 0;
 
   DeviceBuffer<uint32_t> b1(sz);
   DeviceBuffer<uint32_t> b2(sz);
-  scanByteNaiveInit<<<blocks, threads_per_block>>>(gpu_in.data(), b1.data(), sz);
+  scanByteNaiveInit<<<blocks, threads_per_block, 0, r.render_stream>>>(gpu_in.data(), b1.data(), sz);
 
   for(uint8_t d=0; d<ceil(log2(sz)); d++){
-    scanByteNaiveStep<<<blocks, threads_per_block>>>(b1.data(), b2.data(), d, sz);
+    scanByteNaiveStep<<<blocks, threads_per_block, 0, r.render_stream>>>(b1.data(), b2.data(), d, sz);
     std::swap(b1, b2); // uses move constructor to swap thee two
   }
 

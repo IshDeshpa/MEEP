@@ -17,9 +17,8 @@ int main() {
     Camera& camera = Camera::instance();
     const glm::dvec3 pos(-5.0, 3.0, 3.0);
     const glm::dvec3 target(1.0, 0.0, 0.0);
-    const glm::dvec3 up(0.0, 1.0, 0.0);
 
-    camera.pose = glm::inverse(glm::lookAt(pos, target, up));
+    camera.setPose(pos, glm::normalize(target - pos));
 
     stateToWorldLaunch(world);
     worldToClipLaunch();

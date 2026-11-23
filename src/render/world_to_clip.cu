@@ -34,7 +34,7 @@ void worldToClipLaunch(){
   r.verts = std::make_unique<DeviceBuffer<Vertex>>(num_entities * VERTS_PER_CUBE);
   CUDA_CHECK(cudaMemset(r.verts->data(), 0, r.verts->size() * sizeof(Vertex)));
 
-  generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
+  generateTris<<<blocks, threads_per_block, 0, r.render_stream>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
   cudaDeviceSynchronize();
 
 #if (MEEP_DEBUG == 1)

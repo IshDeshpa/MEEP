@@ -19,7 +19,6 @@ struct CubeTile;
 struct DeviceLUTView;
 
 struct LUT {
-#if FACE_TRANSITION
     FaceETile *d_lut;
 
     LUT(const char* f);
@@ -28,15 +27,12 @@ struct LUT {
     LUT& operator=(const LUT&) = delete;
 
     DeviceLUTView deviceView() const;
-#endif
 };
 
 struct DeviceLUTView {
-#if FACE_TRANSITION
     const FaceETile* lut;
 
     MEEP_HOST_DEVICE FaceETile lookup(FaceETile index);
-#endif
 };
 
 static_assert(sizeof(FaceETile) == 2);

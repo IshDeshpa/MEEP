@@ -12,6 +12,8 @@ inline constexpr std::size_t VERTS_PER_CUBE = 8 + MAX_NEW_VERTS;
 class Renderer{
 public:
   const DeviceCube *device_cube;
+  const DeviceScreen *device_screen;
+  cudaStream_t render_stream;
 
   std::unique_ptr<DeviceBuffer<CellRenderEntity>> entities;
 
@@ -25,9 +27,10 @@ public:
 
   Renderer(const Renderer &) = delete;
   Renderer &operator=(const Renderer &) = delete;
+  ~Renderer();
 
 private:
-  Renderer() = default;
+  Renderer();
 };
 
 // 1. State -> world-space vertices, triangles, and colors

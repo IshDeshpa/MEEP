@@ -14,7 +14,7 @@ void clipVertsLaunch() {
     uint16_t TPB = 256; // Threads per block
     std::size_t blocks = (num_entities + TPB - 1) / TPB; // Number of blocks needed
 
-    clipVertsByNear<<<blocks, TPB>>>(r.verts->data(), r.tris->data(), num_entities);
+    clipVertsByNear<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.tris->data(), num_entities);
     cudaDeviceSynchronize();
 
 #if (MEEP_DEBUG == 1)

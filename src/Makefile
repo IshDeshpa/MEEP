@@ -3,7 +3,7 @@ GLM_DIR  := glm
 OBJ_DIR  := build
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state extra window
+MODULES  := render state extra window tick
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
 # DEBUG=1 builds unoptimized with debug info (-O0 -g, plus -G for CUDA) into

@@ -28,7 +28,7 @@ void stateToWorldLaunch(WorldState &ws){
 
   uint16_t threads_per_block = 256;
   std::size_t blocks = (world_size + threads_per_block - 1) / threads_per_block;
-  isVisible<<<blocks, threads_per_block>>>(ws.device_view, face_bitmasks.data());
+  isVisible<<<blocks, threads_per_block, 0, r.render_stream>>>(ws.device_view, face_bitmasks.data());
 
 #if (MEEP_DEBUG == 1)
   // cudaDeviceSynchronize();
@@ -55,7 +55,7 @@ void stateToWorldLaunch(WorldState &ws){
 #endif
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
-  createRefsEntities<<<blocks, threads_per_block>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);
+  createRefsEntities<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);
 
   cudaDeviceSynchronize();
 

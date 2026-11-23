@@ -3,8 +3,11 @@
 #include <glm/fwd.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/rotate_vector.hpp>
 #include <glm/matrix.hpp>
+#include <cmath>
 #include <cstddef>
+#include <mutex>
 #include <vector>
 
 #include "config.hpp"
@@ -42,7 +45,7 @@ public:
 
   // return a new host screen transferred from this device screen
   // to be called only from host
-  HostScreen hostScreen(const std::size_t w, const std::size_t h);
+  HostScreen hostScreen() const;
 
 private:
   DeviceScreen(const std::size_t w, const std::size_t h);
@@ -69,8 +72,38 @@ public:
   Camera(const Camera &) = delete;
   Camera &operator=(const Camera &) = delete;
 
-  // Will change as we move
-  glm::dmat4x4 pose = glm::dmat4x4(1.0); // transform matrix from camera centered at 0,0,0 in -Z direction (identity: at the origin, looking down -Z)
+  static const glm::dvec3 UP;
+
+  void setPose(const glm::dvec3& new_pos, const glm::dvec3& new_look_dir) {
+    std::lock_guard lock(pose_mutex);
+    pos = new_pos;
+    look_dir = new_look_dir;
+  }
+
+  void moveForward(double distance) {
+    std::lock_guard lock(pose_mutex);
+    pos += glm::normalize(look_dir) * distance;
+  }
+
+  void moveRight(double distance) {
+    std::lock_guard lock(pose_mutex);
+    pos += glm::cross(glm::normalize(look_dir), UP) * distance;
+  }
+
+  void rotateLookDir(int dx, int dy) {
+    std::lock_guard lock(pose_mutex);
+    glm::dvec3 forward = glm::normalize(look_dir);
+    forward = glm::rotate(forward, -dx * MOUSE_SENSITIVITY, UP);
+
+    const glm::dvec3 right = glm::normalize(glm::cross(forward, UP));
+    const glm::dvec3 candidate =
+        glm::normalize(glm::rotate(forward, -dy * MOUSE_SENSITIVITY, right));
+    if (std::abs(glm::dot(candidate, UP)) < 0.99) {
+      forward = candidate;
+    }
+
+    look_dir = forward;
+  }
 
   // Fixed at construction (think like camera's inherent parameters)
   const float Z_NEAR = CAMERA_Z_NEAR;
@@ -87,9 +120,13 @@ public:
 
   const glm::dmat4x4 P = makeP(A, B, S, ASPECT);
 
-  // w=0 makes this a direction, so the pose's translation does not affect it
   MEEP_HOST_DEVICE const glm::dmat4x4 getV() const {
-    return glm::inverse(pose);
+#ifdef __CUDA_ARCH__
+    return glm::lookAt(pos, pos + look_dir, glm::dvec3(0.0, 1.0, 0.0));
+#else
+    std::lock_guard lock(pose_mutex);
+    return glm::lookAt(pos, pos + look_dir, UP);
+#endif
   }
 
   MEEP_HOST_DEVICE constexpr glm::dmat4x4 getP() const {
@@ -102,4 +139,9 @@ public:
 
 private:
   Camera() : HostScreen(SCREEN_WIDTH, SCREEN_HEIGHT) {}
+
+  // Position and look direction must only be accessed while pose_mutex is held.
+  mutable std::mutex pose_mutex;
+  glm::dvec3 pos{0.0, 0.0, 0.0};
+  glm::dvec3 look_dir{0.0, 0.0, -1.0};
 };

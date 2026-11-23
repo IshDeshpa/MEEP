@@ -16,7 +16,7 @@ void dummyTick(std::stop_token stop){
     // get the currently pressed keys once per tick on the tick edge
     // if you're faster than a tick then unfortunately your keypress will not register, so ticks must be 
     // short enough for the edge to trigger
-    std::bitset<256> state = window.pressedKeys(); 
+    std::bitset<256> state = window.consumePressedKeys(); 
 
     if(window.isPressed('w', state)){
       std::cout << "W";

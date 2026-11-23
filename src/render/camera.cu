@@ -2,6 +2,8 @@
 #include "extra/check.hpp"
 #include <cstddef>
 
+const glm::dvec3 Camera::UP(0.0, 1.0, 0.0);
+
 Camera &Camera::instance(){
   static Camera camera; // host camera instance, constructed the first time this is called
   return camera;
@@ -25,6 +27,12 @@ DeviceScreen::DeviceScreen(const std::size_t w, const std::size_t h){
   CUDA_CHECK(cudaMalloc(&depthbuffer, sizeof(float) * w * h));
 }
 
-HostScreen DeviceScreen::hostScreen(const std::size_t w, const std::size_t h){
-
+HostScreen DeviceScreen::hostScreen() const {
+  HostScreen screen(WIDTH, HEIGHT);
+  const std::size_t pixels = WIDTH * HEIGHT;
+  CUDA_CHECK(cudaMemcpy(screen.framebuffer.data(), framebuffer,
+                        pixels * sizeof(Color), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(screen.depthbuffer.data(), depthbuffer,
+                        pixels * sizeof(float), cudaMemcpyDeviceToHost));
+  return screen;
 }

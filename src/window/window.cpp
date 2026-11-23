@@ -13,7 +13,7 @@ GameWindow &GameWindow::instance(){
 }
 
 GameWindow::GameWindow(){
-  // pressedKeys() is called from the game thread while this thread owns the display
+  // consumePressedKeys() is called from the game thread while this thread owns the display
   if(XInitThreads() == 0){
     throw std::runtime_error("Unable to initialize Xlib threads!");
   }
@@ -49,7 +49,8 @@ GameWindow::GameWindow(){
   this->vi = XGetVisualInfo(this->d, VisualIDMask, &query, &count);
 
   // inform us of window mapping events only
-  XSelectInput(this->d, this->w, StructureNotifyMask);
+  XSelectInput(this->d, this->w,
+               StructureNotifyMask | PointerMotionMask | ButtonPressMask | KeyPressMask);
 
   // ask the window manager to send WM_DELETE_WINDOW instead of killing us when the window is closed
   this->wm_delete = XInternAtom(this->d, "WM_DELETE_WINDOW", False);
@@ -88,6 +89,10 @@ GameWindow::GameWindow(){
   do {
     XNextEvent(this->d, &e);
   } while(e.type != MapNotify);
+
+  XGrabPointer(d, w, True, PointerMotionMask | ButtonPressMask,
+               GrabModeAsync, GrabModeAsync, w, None, CurrentTime);
+  this->focused = true;
 }
 
 GameWindow::~GameWindow(){
@@ -118,18 +123,20 @@ void GameWindow::updateScreen(HostScreen &s){
   XFlush(this->d);
 }
 
-std::bitset<256> GameWindow::pressedKeys(){
-  char keymap[32];
-  XQueryKeymap(this->d, keymap);
+std::bitset<256> GameWindow::consumePressedKeys(){
+  std::lock_guard lock(pressed_keys_mutex);
+  return std::exchange(pending_keys, std::bitset<256>{});
+}
 
-  std::bitset<256> held;
-  for(int kc = 0; kc < 256; ++kc){
-    if(keymap[kc / 8] & (1 << (kc % 8))){
-      held.set(kc);
-    }
-  }
+std::pair<int, int> GameWindow::consumeMouseMove(){
+  std::lock_guard lock(mouse_move_mutex);
+  return std::exchange(pending_mouse_move, std::pair{0, 0});
+}
 
-  return held & valid_keys;
+std::pair<bool, bool> GameWindow::consumeMouseClicks(){
+  std::lock_guard lock(mouse_click_mutex);
+  return {std::exchange(pending_left_click, false),
+          std::exchange(pending_right_click, false)};
 }
 
 void GameWindow::join(){
@@ -143,6 +150,44 @@ void GameWindow::join(){
 
     if(e.type == ClientMessage && static_cast<Atom>(e.xclient.data.l[0]) == this->wm_delete){
       return;
+    }
+
+    if(e.type == MotionNotify && this->focused){
+      const int dx = e.xmotion.x - SCREEN_WIDTH/2;
+      const int dy = e.xmotion.y - SCREEN_HEIGHT/2;
+
+      if(dx != 0 || dy != 0){
+        std::lock_guard lock(mouse_move_mutex);
+        pending_mouse_move.first += dx;
+        pending_mouse_move.second += dy;
+      }
+    }
+
+    if (e.type == ButtonPress) {
+      if (e.xbutton.button == Button1) {
+        if(!this->focused){
+          // if we're not focused and we detect a click event in the window, refocus and intercept the click event
+          this->focused = true;
+        }
+
+        std::lock_guard lock(mouse_click_mutex);
+        pending_left_click = true;
+      } else if (e.xbutton.button == Button3) {
+        std::lock_guard lock(mouse_click_mutex);
+        pending_right_click = true;
+      }
+    }
+
+    if (e.type == KeyPress ) {
+      if (valid_keys.test(e.xkey.keycode)) {
+        std::lock_guard lock(pressed_keys_mutex);
+        pending_keys.set(e.xkey.keycode);
+      }
+
+      if(XLookupKeysym(&e.xkey, 0) == XK_Escape){
+        this->focused = false;
+        XUngrabPointer(d, CurrentTime);
+      }
     }
   }
 }

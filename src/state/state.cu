@@ -16,6 +16,9 @@ __global__ static void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
                            size_t tiles_y, size_t tiles_z, size_t tile_count,
                            size_t tile_phase, size_t face_phase);
 
+static_assert(FACE_TRANSITION && !CUBE_TRANSITION,
+              "Only face transitions are implemented");
+
 // WorldState: CPU ownership, initialization, and tick submission.
 
 std::tuple<size_t, size_t, size_t> WorldState::validateWorldFile(const char* f) {
@@ -347,7 +350,6 @@ __global__ static void updateTile(DeviceWorldView buffers, DeviceLUTView lut,
 
 __device__ static CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, size_t face_phase) {
     CubeTile next_tile = tile; // Keep reserved state bits initialized.
-#if FACE_TRANSITION
     FaceETile face_0, face_1;
 
     if (face_phase == 0) { // x faces
@@ -365,12 +367,5 @@ __device__ static CubeTile stateTransition(DeviceLUTView lut, CubeTile tile, siz
         unpackFace(face_0, next_tile, 3, 7, 1, 5);
         unpackFace(face_1, next_tile, 2, 6, 0, 4);
     }
-
-#elif CUBE_TRANSITION
-    #error "Cube transitions are not implemented"
-
-#else
-    #error "No state transition variation selected in config.hpp"
-#endif
     return next_tile;
 }

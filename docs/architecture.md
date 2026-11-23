@@ -264,8 +264,9 @@ Source: [CUDA class and kernel restrictions](https://docs.nvidia.com/cuda/cuda-p
 
 ## Tick pacing
 
-worldTick remains a CPU loop. TickRate enum values represent integer
-milliseconds per tick; zero means Unlimited. Each iteration snapshots its period,
+worldTick remains a CPU loop. TickRate is a float measured in ticks per second;
+zero means Unlimited. TickRates provides named defaults from one through sixty
+ticks per second. Each iteration derives its period from the configured rate,
 records a steady-clock start, submits updateWorld, waits for GPU completion
 through WorldState::waitForTick, calls swapBuffers, and increments the completed tick counter.
 For nonzero periods it calls std::this_thread::sleep_until(start + period).
@@ -274,8 +275,8 @@ The effective remaining sleep is max(0, period - elapsed), including GPU work.
 Overruns start the next iteration immediately without accumulated catch-up
 ticks. Unlimited removes deliberate pacing but still waits for each GPU tick,
 bounding outstanding simulation work to one tick. OS scheduling can wake a
-sleeping thread late. The 17 ms and 34 ms enum values target approximately
-58.82 and 29.41 ticks/s respectively, not exactly 60 and 30.
+sleeping thread late. The named thirty and sixty tick-rate defaults target
+exactly 30 and 60 ticks/s before scheduler delay and timing granularity.
 
 waitForTick currently synchronizes the same default CUDA stream used by
 updateWorld and checks asynchronous errors. It is not a device-wide wait,

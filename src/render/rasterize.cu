@@ -17,7 +17,7 @@ void rasterizeLaunch() {
 
 
 
-    rasterize<<<grid, block>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(), 
+    rasterize<<<grid, block, 0, r.render_stream>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(), 
                                 r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris());
 
     CUDA_CHECK(cudaGetLastError());
@@ -203,8 +203,6 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
             
         }
     }
-    
-
 
     // write to buf
     screen.framebuffer[idx] = best_color;

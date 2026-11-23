@@ -1,60 +1,131 @@
+#include "render/render.hpp"
 #include "state/state.hpp"
 #include "state/lut.hpp"
+#include "tick/tick.hpp"
+#include "window/window.hpp"
 
 #include <charconv>
+#include <condition_variable>
 #include <exception>
+#include <glm/geometric.hpp>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <string_view>
 #include <chrono>
 #include <thread>
 
-std::size_t tick_counter = 0;
-#define TICK_HIST 6000
-std::chrono::steady_clock::duration recent_tick_times[TICK_HIST];
+TickSource world_tick{WORLD_TICK_RATE};
+TickSource render_tick{RENDER_TICK_RATE};
+TickSource input_tick{INPUT_TICK_RATE};
 
-// TODO: variable tick rate
-enum TickRate : std::uint16_t { // Measured in ms per tick
-  ONE_TPS = 1000,
-  TWO_TPS = 500,
-  FIVE_TPS = 200,
-  TEN_TPS = 100,
-  THIRTY_TPS = 34,
-  SIXTY_TPS = 17,
-  UNLIMITED = 0,
-};
-TickRate tick_rate = TickRate::SIXTY_TPS;
+std::unique_ptr<WorldState> world;
+std::unique_ptr<LUT> lut;
 
-std::chrono::steady_clock::duration averageTickTime(size_t interval) {
-  std::chrono::steady_clock::duration total = std::chrono::steady_clock::duration::zero();
-  interval = std::min(interval, std::min(tick_counter, std::size(recent_tick_times)));
-  if (interval == 0) return total;
-  for (size_t i = 0; i < interval; i++) {
-    total += recent_tick_times[(tick_counter - i) % std::size(recent_tick_times)];
+std::mutex render_sync_mutex;
+std::condition_variable_any render_sync;
+bool frame_ready = false;
+bool frame_rendered = true;
+
+using Clock = std::chrono::steady_clock;
+
+void inputUpdate(GameWindow& window, Camera& camera){
+  std::bitset<256> keys = window.consumePressedKeys(); 
+  std::pair<int, int> dx_dy = window.consumeMouseMove(); 
+  int &dx = dx_dy.first; 
+  int &dy = dx_dy.second;
+  std::pair<bool, bool> left_right = window.consumeMouseClicks(); 
+  [[maybe_unused]] bool &left = left_right.first; 
+  [[maybe_unused]] bool &right = left_right.second;
+
+  // move look
+  camera.rotateLookDir(dx, dy);
+  
+  // move pos
+  if(window.isPressed('w', keys)){
+    camera.moveForward(PLAYER_SPEED);
   }
-  return total / interval;
+
+  if(window.isPressed('a', keys)){
+    camera.moveRight(PLAYER_SPEED);
+  }
+
+  if(window.isPressed('w', keys)){
+    camera.moveForward(-PLAYER_SPEED);
+  }
+
+  if(window.isPressed('d', keys)){
+    camera.moveRight(-PLAYER_SPEED);
+  }
 }
 
-void worldTick(WorldState& world, LUT& lut) {
-  using Clock = std::chrono::steady_clock;
+void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera) {
+  while (!stop_token.stop_requested()) {
+    const time_point start = Clock::now();
+    inputUpdate(window, camera);
+    input_tick.incAndWait(start);
+  }
+}
 
-  while (true) {
-    const auto start = Clock::now();
-    const auto period = std::chrono::milliseconds(static_cast<std::uint16_t>(tick_rate));
+void worldTick(std::stop_token stop_token) {
+  while (!stop_token.stop_requested()) {
+    time_point start = Clock::now();
 
-    world.updateWorld(tick_counter, lut);
-    world.waitForTick();
-    world.swapBuffers();
-    ++tick_counter;
+    world->updateWorld(world_tick.counter, *lut);
+    world->waitForTick();
+    world->swapBuffers();
 
-    if (period.count() != 0) {
-      const auto elapsed = Clock::now() - start;
-      recent_tick_times[tick_counter % std::size(recent_tick_times)] = elapsed;
-      std::this_thread::sleep_until(start + period);
+    world_tick.incAndWait(start);
+    {
+      std::lock_guard lock(render_sync_mutex);
+      frame_ready = true;
+      frame_rendered = false;
+    }
+    render_sync.notify_one();
+
+    std::unique_lock lock(render_sync_mutex);
+    if (!render_sync.wait(lock, stop_token, [] { return frame_rendered; })) {
+      return;
     }
   }
 }
 
+void renderTick(std::stop_token stop_token, GameWindow& window,
+                Renderer& renderer, Camera& camera) {
+    const glm::dvec3 pos(-5.0, 3.0, 3.0);
+    const glm::dvec3 target(1.0, 0.0, 0.0);
+    camera.setPose(pos, glm::normalize(target - pos));
 
+    while (!stop_token.stop_requested()) {
+      std::unique_lock lock(render_sync_mutex);
+      if (!render_sync.wait(lock, stop_token, [] { return frame_ready; })) {
+        return;
+      }
+      lock.unlock();
+
+      time_point start = Clock::now();
+
+      stateToWorldLaunch(*world);
+      worldToClipLaunch();
+      clipVertsLaunch();
+      clipToNDCLaunch();
+      ndcToScreenLaunch();
+      rasterizeLaunch();
+
+      // update window
+      HostScreen s = renderer.device_screen->hostScreen();
+      window.updateScreen(s);
+
+      render_tick.incAndWait(start);
+
+      {
+        std::lock_guard done_lock(render_sync_mutex);
+        frame_ready = false;
+        frame_rendered = true;
+      }
+      render_sync.notify_one();
+    }
+}
 
 int main(int argc, char* argv[]){
   size_t n = 100, m = 100, k = 100;
@@ -98,8 +169,12 @@ int main(int argc, char* argv[]){
   }
 
   try {
-    WorldState world(n, m, k);
-    LUT lut("lut.bin");
+    world = std::make_unique<WorldState>(n, m, k);
+    lut = std::make_unique<LUT>("lut.bin");
+
+    GameWindow& window = GameWindow::instance();
+    Renderer& renderer = Renderer::instance();
+    Camera& camera = Camera::instance();
 
     // start world running function
     //    needs to take tick rate, which can be changed by user during runtime, into account. 
@@ -110,6 +185,19 @@ int main(int argc, char* argv[]){
     //    which cells are in which tile depends on phase, which is tick_counter & b'0010 (phase changes every 2 ticks)
     //    which 2 of 4 faces are computed depends on tick_counter & b'0001 (x faces then z faces then repeat)
 
+    std::jthread t1{worldTick};
+    std::jthread t2{[&](std::stop_token stop_token) {
+      renderTick(stop_token, window, renderer, camera);
+    }};
+    std::jthread t3{[&](std::stop_token stop_token) {
+      inputTick(stop_token, window, camera);
+    }};
+    
+    window.join();
+  
+    t1.request_stop();
+    t2.request_stop();
+    t3.request_stop();
 
   } catch (const std::exception& error) {
     std::cerr << "Could not create world: " << error.what() << '\n';
