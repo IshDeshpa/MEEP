@@ -5,15 +5,14 @@
 #include <cstddef>
 #include <type_traits>
 
-template <typename E, typename T>
+template <typename E, typename T, std::size_t N = static_cast<std::size_t>(E::COUNT)>
 struct EnumLUT {
     // E must be an unsigned enum with a COUNT member (the size of the table)
     static_assert(std::is_enum_v<E>, "EnumLUT key must be an enum");
     static_assert(std::is_unsigned_v<std::underlying_type_t<E>>,
                   "EnumLUT key must have an unsigned underlying type");
 
-    static constexpr std::size_t size =
-        static_cast<std::size_t>(E::COUNT);
+    static constexpr std::size_t size = N;
 
     const T LUT_ARR[size == 0 ? 1 : size];
 
@@ -35,3 +34,7 @@ struct EnumLUT {
 // references and addresses still refer to that execution space's own table.
 #define DEFINE_ENUM_LUT(name, enum_type, value_type, ...) \
     MEEP_ENUM_LUT_STORAGE EnumLUT<enum_type, value_type> name{{__VA_ARGS__}}
+
+#define DEFINE_ENUM_LUT_SIZED(name, enum_type, value_type, count, ...) \
+    MEEP_ENUM_LUT_STORAGE EnumLUT<enum_type, value_type, count> name{{__VA_ARGS__}}
+    

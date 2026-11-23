@@ -44,15 +44,23 @@ struct Color {
   uint8_t r; uint8_t g; uint8_t b; uint8_t a;
 };
 
-DEFINE_ENUM_LUT(ELEMENT_COLOR_LUT, Element, Color, 
+DEFINE_ENUM_LUT_SIZED(ELEMENT_COLOR_LUT, Element, Color, ELEMENT_COUNT, 
     {  0,   0,   0,   0}, // AIR
-    { 30, 144, 255, 128}, // WATER
-    {139,  90,  43, 255}, // EARTH
+    { 30, 140, 255,  76}, // WATER
+    {110,  70,  50, 255}, // EARTH
     {255,  69,   0, 255}, // LAVA
-    
+    { 35, 175,  60, 255}, // NATURE
+    {200, 200, 200,  64}, // STEAM
+    {255, 120,   0,  64}, // FIRE
+    {175, 255,   0, 192}, // ACID
+    {110, 240, 255, 128}, // ICE  
+    {255, 165, 165,  76}, // HOTAIR
+    {255, 230, 150, 230}, // EXPLOSION
+    {220, 200, 150, 255}, // SAND
+    {115, 110, 100, 255}, // BOMB
     {100, 100, 110, 255}, // BLOCK
-    {255, 215,   0, 255}, // EMITTER
-    { 40,  10,  60, 255}, // VOID
+    {210, 210, 200, 255}, // EMITTER
+    { 35,  10,  60, 255}, // VOID
 );
 
 // Host-side geometry parsed from an OBJ file.

@@ -4,6 +4,8 @@
 #include <fstream>
 #include <stdexcept>
 
+#define BACKGROUND_COLOR 25 // value of all r,g,b channel for bg
+
 // want to tweak these when testing to see most efficient block size for rasterization
 #define RASTER_BLOCK_X 16
 #define RASTER_BLOCK_Y 16
@@ -31,11 +33,11 @@ void rasterizeLaunch() {
     std::size_t colored_pixels = 0;
 
     for (const Color& pixel : camera.framebuffer) {
-        if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+        if (pixel.r != BACKGROUND_COLOR || pixel.g != BACKGROUND_COLOR || pixel.b != BACKGROUND_COLOR)
             ++colored_pixels;
     }
 
-    printf("Rasterizer: %zu / %zu pixels are non-black\n",
+    printf("Rasterizer: %zu / %zu pixels are not part of the background\n",
            colored_pixels, camera.framebuffer.size());
 
     const std::size_t sample_x[] = {
@@ -115,11 +117,11 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
     const float pixel_center_y = static_cast<float>(y) + 0.5f;
 
     // transparency, max of 3 transparent colors to blend
-    Color transparent_colors[3]{}; // initialize to black
+    Color transparent_colors[3]{}; // initialize to background color
     float transparent_depths[3] = {std::numeric_limits<float>::max(), 
         std::numeric_limits<float>::max(), std::numeric_limits<float>::max()}; // initialize to max depth
 
-    Color best_color{50, 50, 50, 255}; // initialize to black
+    Color bg_color{BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 255}; // initialize to background color
     float best_depth = std::numeric_limits<float>::max(); // initialize to max depth
 
     for (std::size_t t = 0; t < num_tris; ++t) {
@@ -176,7 +178,7 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
         if (color.a == 255) { // fully opaque, just write to buffer
             if (depth < best_depth) {
                 best_depth = depth;
-                best_color = color;
+                bg_color = color;
             }
         } else {
             // partially transparent, blend with existing color
@@ -195,11 +197,16 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
             }
         }
     }
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 2; i >= 0; --i) {
         if (transparent_depths[i] < best_depth) {
             const Color &trans_color = transparent_colors[i];
-            const Color &opaque_color = best_color;
-
+            const Color &opaque_color = bg_color;
+            const float opacity = trans_color.a / 255.0f;
+            // do weighted avg of all channels
+            bg_color.r = opacity * trans_color.r + (1 - opacity) * opaque_color.r; 
+            bg_color.g = opacity * trans_color.g + (1 - opacity) * opaque_color.g;
+            bg_color.b = opacity * trans_color.b + (1 - opacity) * opaque_color.b;
+            bg_color.a = 255; // full opaque
             
         }
     }
@@ -207,6 +214,6 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
 
 
     // write to buf
-    screen.framebuffer[idx] = best_color;
+    screen.framebuffer[idx] = bg_color;
     screen.depthbuffer[idx] = best_depth;
 }

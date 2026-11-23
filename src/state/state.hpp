@@ -13,16 +13,14 @@ using worldcoord = glm::ivec3;
 
 // TODO: reserve the highest material IDs for debug elements.
 enum class Element : std::uint8_t {
-  AIR = 0,
-  WATER = 1,
-  EARTH = 2,
-  LAVA = 3,
-  // debug
-  BLOCK = 4,
-  EMITTER = 5,
-  VOID = 6,
-  COUNT = 7
+  AIR = 0, WATER = 1, EARTH = 2, LAVA = 3,
+  NATURE = 4, STEAM = 5, FIRE = 6, ACID = 7,
+  ICE = 8, HOTAIR = 9, EXPLOSION = 10, SAND = 11,
+  BOMB = 12, BLOCK = 13, EMITTER = 14, VOID = 15,
 };
+
+// i fucking hate warnings so im making this
+inline constexpr std::size_t ELEMENT_COUNT = 16;
 
 // A cell contains all the information that needs to be in world state about
 // a single cell
