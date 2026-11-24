@@ -20,7 +20,7 @@ void rasterizeLaunch() {
 
 
     rasterize<<<grid, block>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(), 
-                                r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris());
+                                r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris(), r.tri_directions->data());
 
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
@@ -101,7 +101,7 @@ MEEP_DEVICE float edge(const Vertex2D &a, const Vertex2D &b, float p_x, float p_
 
 MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const Tri *tris, 
                             std::size_t num_tris, std::size_t num_verts, DeviceScreenData screen,
-                            const CellRenderEntity* entities, std::size_t tris_per_entity) {
+                            const CellRenderEntity* entities, std::size_t tris_per_entity, const Direction* tri_directions) {
 
 
     const std::size_t x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -133,7 +133,35 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
         }
 
         const std::size_t entity_idx = t / tris_per_entity;
-        const Color color = entities[entity_idx].color;
+        Color color = entities[entity_idx].color;
+
+        const Direction dir = tri_directions[t];
+
+        const glm::vec3 normal = glm::vec3(DIRECTION_LUT[dir]);
+
+        const glm::vec3 cube_center = glm::vec3(entities[entity_idx].coords());
+
+        // For your unit cubes centered on their cell coordinates.
+        const glm::vec3 face_center = cube_center + 0.5f * normal;
+
+        const glm::vec3 light_position(0.0f, 0.0f, 0.0f);
+        const glm::vec3 toward_light = light_position - face_center;
+
+        const float distance_squared = glm::dot(toward_light, toward_light);
+
+        float diffuse = 0.0f;
+        if (distance_squared > 0.0f) {
+            const glm::vec3 light_direction = toward_light / sqrtf(distance_squared);
+            diffuse = glm::max(0.0f, glm::dot(normal, light_direction));
+        }
+
+        const float brightness = 0.6f + 0.4f * diffuse;
+
+        
+
+        color.r = static_cast<std::uint8_t>(color.r * brightness);
+        color.g = static_cast<std::uint8_t>(color.g * brightness);
+        color.b = static_cast<std::uint8_t>(color.b * brightness);
 
         if (color.a == 0) { // fully transparent, skip
             continue;

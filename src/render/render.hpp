@@ -20,6 +20,8 @@ public:
 
   std::unique_ptr<DeviceBuffer<Vertex2D>> verts2d;
 
+  std::unique_ptr<DeviceBuffer<Direction>> tri_directions;
+
   // Global singleton, built on first use
   static Renderer &instance();
 
@@ -37,7 +39,7 @@ MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visib
 
 // 2. World -> clip space 
 void worldToClipLaunch();
-MEEP_GLOBAL void generateTris(const CellRenderEntity *entities, Vertex *verts, Tri *tris, std::size_t num_entities, glm::dmat4x4 vp);
+MEEP_GLOBAL void generateTris(const CellRenderEntity *entities, Vertex *verts, Tri *tris, Direction *tri_directions, std::size_t num_entities, glm::dmat4x4 vp);
 
 // 3. Clip the triangles against the NEAR PLANE ONLY
 void clipVertsLaunch();
@@ -47,7 +49,7 @@ void clipVertsLaunch();
 //  old tri is modified, and new tri is added.
 // If 2 verts are behind near plane, we clip: both verts locations change to new locations (at intersection points w/ near plane).
 // if all 3 verts in a tri are behind near plane, we invalidate the triangle entirely (set all indices to UINT_MAX?)
-MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entities);
+MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, Direction *tri_directions, std::size_t num_entities);
 
 // 4. Clip space -> NDC
 void clipToNDCLaunch();
@@ -70,4 +72,4 @@ void rasterizeLaunch();
 MEEP_GLOBAL void rasterize(
     const Vertex2D* verts2d, const Vertex* verts, const Tri* tris,
     std::size_t num_tris, std::size_t num_verts, DeviceScreenData screen,
-    const CellRenderEntity* entities, std::size_t tris_per_entity);
+    const CellRenderEntity* entities, std::size_t tris_per_entity, const Direction* tri_directions);

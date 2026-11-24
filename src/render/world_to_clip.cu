@@ -31,10 +31,12 @@ void worldToClipLaunch(){
   r.tris = std::make_unique<DeviceBuffer<Tri>>(2 * (num_entities * HostCube::numTris()));  
   CUDA_CHECK(cudaMemset(r.tris->data(), 0xFF, 2 * (num_entities * HostCube::numTris()) * sizeof(Tri)));
 
+  r.tri_directions = std::make_unique<DeviceBuffer<Direction>>(r.tris->size());
+
   r.verts = std::make_unique<DeviceBuffer<Vertex>>(num_entities * VERTS_PER_CUBE);
   CUDA_CHECK(cudaMemset(r.verts->data(), 0, r.verts->size() * sizeof(Vertex)));
 
-  generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), num_entities, vp);
+  generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), r.tri_directions->data(), num_entities, vp);
   cudaDeviceSynchronize();
 
 #if (MEEP_DEBUG == 1)
@@ -56,7 +58,7 @@ void worldToClipLaunch(){
 #endif
 }
 
-__global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tri *tris, std::size_t num_entities, glm::dmat4x4 vp){
+__global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tri *tris, Direction *tri_directions, std::size_t num_entities, glm::dmat4x4 vp){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= num_entities) return;
 
@@ -76,7 +78,16 @@ __global__ void generateTris(const CellRenderEntity *entities, Vertex *verts, Tr
   uint32_t ofs = ind * VERTS_PER_CUBE;
   for (uint8_t i = 0; i < tri_ct; i++) {
     if (ent.triMask[i]) {
-        tris[ind * tri_ct * 2 + i] = g.tris[i] + glm::uvec3(ofs, ofs, ofs);
+      const Tri local_tri = g.tris[i];
+      const std::size_t tri_idx = ind * tri_ct * 2 + i;
+
+      tris[tri_idx] = local_tri + glm::uvec3(ofs, ofs, ofs);
+
+      tri_directions[tri_idx] = triangleDirection(
+          g.verts[local_tri.x],
+          g.verts[local_tri.y],
+          g.verts[local_tri.z]
+      );
     }
 }
 }

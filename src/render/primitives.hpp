@@ -52,10 +52,10 @@ DEFINE_ENUM_LUT_SIZED(ELEMENT_COLOR_LUT, Element, Color, ELEMENT_COUNT,
     { 35, 175,  60, 255}, // NATURE
     {200, 200, 200,  64}, // STEAM
     {255, 120,   0,  64}, // FIRE
-    {175, 255,   0, 192}, // ACID
+    {175, 255,   0, 230}, // ACID
     {110, 240, 255, 128}, // ICE  
     {255, 165, 165,  76}, // HOTAIR
-    {255, 230, 150, 230}, // EXPLOSION
+    {255, 230, 150, 240}, // EXPLOSION
     {220, 200, 150, 255}, // SAND
     {115, 110, 100, 255}, // BOMB
     {100, 100, 110, 255}, // BLOCK

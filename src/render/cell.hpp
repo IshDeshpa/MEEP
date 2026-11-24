@@ -80,6 +80,10 @@ public:
 
   // Host only: prints the cell, its coords and its color to stdout
   void print() const;
+
+  MEEP_HOST_DEVICE worldcoord coords() const {
+    return cell_ref.coords;
+  }
 };
 
 MEEP_DEVICE uint8_t getFaceBitmask(CellRef &c, DeviceWorldView dwv);
