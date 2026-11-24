@@ -57,6 +57,10 @@ void inputUpdate(GameWindow& window, Camera& camera){
   if(window.isPressed('d', keys)){
     camera.moveRight(-PLAYER_SPEED);
   }
+
+#ifdef MEEP_DEBUG
+    std::printf("Pos: %0.2f, %0.2f, %0.2f\n", camera.getPos().x, camera.getPos().y, camera.getPos().z);
+#endif
 }
 
 void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera) {
@@ -95,21 +99,22 @@ void worldTick(std::stop_token stop_token) {
 }
 
 void renderTick(std::stop_token stop_token, GameWindow& window,
-                Renderer& renderer, Camera& camera) {
-    const glm::dvec3 pos(-5.0, 3.0, 3.0);
-    const glm::dvec3 target(1.0, 0.0, 0.0);
-    camera.setPose(pos, glm::normalize(target - pos));
-
+                Renderer&, Camera& camera) {
+    // const glm::dvec3 pos(-5.0, 3.0, 3.0);
+    // const glm::dvec3 target(1.0, 0.0, 0.0);
+    // camera.setPose(pos, glm::normalize(target - pos));
+    //
     while (!stop_token.stop_requested()) {
       if (RENDER_TICK_RATE <= 0.0F) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         continue;
       }
-      std::unique_lock lock(render_sync_mutex);
-      if (!render_sync.wait(lock, stop_token, [] { return frame_ready; })) {
-        return;
-      }
-      lock.unlock();
+
+      // std::unique_lock lock(render_sync_mutex);
+      // if (!render_sync.wait(lock, stop_token, [] { return frame_ready; })) {
+      //   return;
+      // }
+      // lock.unlock();
 
       time_point start = Clock::now();
 
@@ -121,8 +126,11 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
       rasterizeLaunch();
 
       // update window
-      HostScreen s = renderer.device_screen->hostScreen();
-      window.updateScreen(s);
+      window.updateScreen(camera);
+
+#ifdef MEEP_DEBUG
+      camera.writePPM("render_debug.ppm");
+#endif
 
       render_tick.incAndWait(start);
 

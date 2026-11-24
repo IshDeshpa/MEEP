@@ -12,9 +12,12 @@
 
 namespace {
 
-constexpr std::size_t WORLD_N = 100;
-constexpr std::size_t WORLD_M = 1;
-constexpr std::size_t WORLD_K = 100;
+// The default camera starts at the origin looking down positive Z. Keep this
+// compact voxel sphere at the origin so it is immediately in view.
+constexpr std::size_t WORLD_N = 5;
+constexpr std::size_t WORLD_M = 5;
+constexpr std::size_t WORLD_K = 5;
+constexpr int SPHERE_RADIUS = 2;
 
 struct ElementName {
   std::string_view name;
@@ -48,8 +51,8 @@ bool parseElement(std::string value, Element& element, std::string_view& element
 void printUsage(const char* program) {
   std::cerr << "Usage: " << program
             << " <air|water|earth|lava|block|emitter|void> [output-filename]\n"
-            << "Writes a 100x1x100 world filled with the selected element.\n"
-            << "Writes into src/worlds/; default filename: world_<element>_100x1x100.bin\n";
+            << "Writes a 5x5x5 voxel sphere of the selected element near the origin.\n"
+            << "Writes into src/worlds/; default filename: world_<element>_sphere_5x5x5.bin\n";
 }
 
 } // namespace
@@ -69,7 +72,7 @@ int main(int argc, char* argv[]) {
   }
 
   const std::filesystem::path output_name = argc == 3 ? argv[2]
-      : "world_" + std::string(element_name) + "_" + std::to_string(WORLD_N) +
+      : "world_" + std::string(element_name) + "_sphere_" + std::to_string(WORLD_N) +
             "x" + std::to_string(WORLD_M) + "x" + std::to_string(WORLD_K) + ".bin";
   if (output_name.empty() || output_name.has_parent_path() ||
       output_name == "." || output_name == "..") {
@@ -84,7 +87,23 @@ int main(int argc, char* argv[]) {
     return 1;
   }
   const auto output_path = worlds_dir / output_name;
-  std::vector<Cell> cells(WORLD_N * WORLD_M * WORLD_K, Cell{element, 0});
+  std::vector<Cell> cells(WORLD_N * WORLD_M * WORLD_K, Cell{Element::AIR, 0});
+  const int center_x = static_cast<int>(WORLD_N / 2);
+  const int center_y = static_cast<int>(WORLD_M / 2);
+  const int center_z = static_cast<int>(WORLD_K / 2);
+
+  for (std::size_t x = 0; x < WORLD_N; ++x) {
+    for (std::size_t y = 0; y < WORLD_M; ++y) {
+      for (std::size_t z = 0; z < WORLD_K; ++z) {
+        const int dx = static_cast<int>(x) - center_x;
+        const int dy = static_cast<int>(y) - center_y;
+        const int dz = static_cast<int>(z) - center_z;
+        if (dx * dx + dy * dy + dz * dz <= SPHERE_RADIUS * SPHERE_RADIUS) {
+          cells[z + WORLD_K * (y + WORLD_M * x)] = Cell{element, 0};
+        }
+      }
+    }
+  }
 
   std::ofstream output(output_path, std::ios::binary);
   if (!output) {
@@ -103,6 +122,6 @@ int main(int argc, char* argv[]) {
   }
 
   std::cout << "Wrote " << output_path << ": " << WORLD_N << 'x' << WORLD_M
-            << 'x' << WORLD_K << " filled with " << element_name << " cells\n";
+            << 'x' << WORLD_K << " with a voxel sphere of " << element_name << "\n";
   return 0;
 }

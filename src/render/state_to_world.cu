@@ -6,6 +6,7 @@
 #include <cuda_runtime_api.h>
 #include <cstdint>
 #include <cstdio>
+#include <iostream>
 
 void stateToWorldLaunch(WorldState &ws){
   static Renderer &r = Renderer::instance();
@@ -53,6 +54,11 @@ void stateToWorldLaunch(WorldState &ws){
   //   printf("%u ", static_cast<unsigned>(offsets_host[i]));
   // }
 #endif
+
+  if(num_refs == 0){
+    std::cout << "Nothing to render!" << std::endl;
+    return;
+  }
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
   createRefsEntities<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);

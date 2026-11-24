@@ -10,11 +10,11 @@ void clipToNDCLaunch(){
   std::size_t blocks = (verts_sz + threads_per_block - 1) / threads_per_block;
 
   clipToNDC<<<blocks, threads_per_block, 0, r.render_stream>>>(r.verts->data(), verts_sz);
-  cudaDeviceSynchronize();
+  KERNEL_CHECK();
 
   blocks = (r.tris->size() + threads_per_block - 1) / threads_per_block;
   backfaceCull<<<blocks, threads_per_block, 0, r.render_stream>>>(r.verts->data(), r.tris->data(), tris_sz);
-  cudaDeviceSynchronize();
+  KERNEL_CHECK();
 }
 
 // Modifies in place!

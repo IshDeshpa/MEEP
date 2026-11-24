@@ -1,8 +1,7 @@
+#include "extra/check.hpp"
 #include "render/render.hpp"
 #include <limits>
 #include <cstdio>
-#include <fstream>
-#include <stdexcept>
 
 // want to tweak these when testing to see most efficient block size for rasterization
 #define RASTER_BLOCK_X 16
@@ -20,8 +19,7 @@ void rasterizeLaunch() {
     rasterize<<<grid, block, 0, r.render_stream>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(), 
                                 r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris());
 
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaDeviceSynchronize());
+    KERNEL_CHECK();
 
     Camera& camera = Camera::instance();
 
@@ -56,27 +54,7 @@ void rasterizeLaunch() {
                static_cast<unsigned>(color.b),
                static_cast<unsigned>(color.a));
     }
-    std::ofstream image("render_debug.ppm", std::ios::binary);
-    if (!image)
-        throw std::runtime_error("Cannot open render_debug.ppm");
-
-    // P6 = binary RGB, followed by dimensions and maximum channel value.
-    image << "P6\n"
-          << screen.WIDTH << ' ' << screen.HEIGHT << "\n255\n";
-
-    for (const Color& pixel : camera.framebuffer) {
-        const unsigned char rgb[3] = {
-            pixel.r, pixel.g, pixel.b
-        };
-        image.write(reinterpret_cast<const char*>(rgb), sizeof(rgb));
-    }
-
-    image.close();
-    if (!image)
-        throw std::runtime_error("Failed to write render_debug.ppm");
 #endif
-
-
 }
 
 /*  helper for calculating barycentric coordinates

@@ -35,7 +35,7 @@ shell. Use `make run ARGS="-n 20 -m 10 -k 30"` to change blank dimensions, or
 included WATER scene. File worlds supply their own dimensions; combining
 `--world` with dimension options is an error. Saved worlds live in `src/worlds/`.
 The `gen_world` tool writes there regardless of the working directory, using
-descriptive filenames such as `world_water_100x1x100.bin`:
+descriptive filenames such as `world_water_sphere_5x5x5.bin`:
 `make run-gen_world ARGS=water` (an optional output filename is accepted).
 
 `make lut` (or `make alpha-lut`) generates `build/lut_alpha.bin` from `state/lut_gen_alpha.py`

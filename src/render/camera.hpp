@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include "config.hpp"
@@ -22,6 +23,8 @@ struct HostScreen {
   const std::size_t HEIGHT; // pixels
   std::vector<Color> framebuffer; // size = w*h
   std::vector<float> depthbuffer; // size = w*h
+
+  void writePPM(const std::string &path) const;
 };
 
 // GPU-resident screen data: the buffers are device pointers
@@ -42,10 +45,6 @@ public:
 
   DeviceScreen(const DeviceScreen &) = delete;
   DeviceScreen &operator=(const DeviceScreen &) = delete;
-
-  // return a new host screen transferred from this device screen
-  // to be called only from host
-  HostScreen hostScreen() const;
 
 private:
   DeviceScreen(const std::size_t w, const std::size_t h);
@@ -103,6 +102,14 @@ public:
     }
 
     look_dir = forward;
+
+#ifdef MEEP_DEBUG
+    std::printf("look: %0.2f, %0.2f, %0.2f\n", look_dir.x, look_dir.y, look_dir.z);
+#endif
+  }
+
+  constexpr glm::dvec3 getPos(){
+    return this->pos;
   }
 
   // Fixed at construction (think like camera's inherent parameters)
@@ -143,5 +150,5 @@ private:
   // Position and look direction must only be accessed while pose_mutex is held.
   mutable std::mutex pose_mutex;
   glm::dvec3 pos{0.0, 0.0, 0.0};
-  glm::dvec3 look_dir{0.0, 0.0, -1.0};
+  glm::dvec3 look_dir{0.0, 0.0, 1.0};
 };

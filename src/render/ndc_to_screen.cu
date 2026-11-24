@@ -14,7 +14,7 @@ void ndcToScreenLaunch(){
     r.verts2d = std::make_unique<DeviceBuffer<Vertex2D>>(num_verts);
 
     ndcToScreen<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.verts2d->data(), num_verts);
-    cudaDeviceSynchronize();
+    KERNEL_CHECK();
 
 #if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
     std::vector<Vertex2D> host_verts2d(num_verts);

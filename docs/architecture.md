@@ -118,9 +118,9 @@ Main constructs a blank AIR world by default (100x100x100, configurable with
 `-n/-m/-k`). Only `--world FILE` selects a serialized scene; file dimensions and
 dimension options are mutually exclusive. The included WATER scene is named
 `src/worlds/world_water_100x1x100.bin`. All saved scenes and world generator
-outputs live in `src/worlds/`; the generator uses the
-`world_<element>_<n>x<m>x<k>.bin` naming convention by default, with an optional
-output filename in that directory.
+outputs live in `src/worlds/`; the generator creates a compact 5x5x5 voxel
+sphere near the origin and uses the `world_<element>_sphere_5x5x5.bin` naming
+convention by default, with an optional output filename in that directory.
 
 Partition phase 0/1 refers to origins in padded coordinates. Every visible cell
 belongs to a complete tile in both phases, for positive even or odd dimensions.

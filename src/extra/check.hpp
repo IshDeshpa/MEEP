@@ -7,3 +7,9 @@ namespace meep {
 
 // Evaluate call once and retain the caller's source location.
 #define CUDA_CHECK(call) ::meep::cudaCheck((call), #call, __FILE__, __LINE__)
+
+#define KERNEL_CHECK()                                            \
+    do {                                                          \
+        CUDA_CHECK(cudaGetLastError());                           \
+        CUDA_CHECK(cudaDeviceSynchronize());                      \
+    } while (0)
