@@ -91,13 +91,14 @@ GameWindow::GameWindow(){
   // allocate the image buffer
   this->img->data = new char[img->bytes_per_line * img->height];
 
+  // start unfocused so as to not startle the user
+  this->focused = false;
+
   // block until the window is mapped
   XEvent e;
   do {
     XNextEvent(this->d, &e);
   } while(e.type != MapNotify);
-
-  this->focused = grabInput();
 }
 
 GameWindow::~GameWindow(){
@@ -187,6 +188,8 @@ void GameWindow::join(){
         std::lock_guard lock(mouse_move_mutex);
         pending_mouse_move.first += dx;
         pending_mouse_move.second += dy;
+
+        XWarpPointer(this->d, None, this->w, 0, 0, 0, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
       }
     }
 
