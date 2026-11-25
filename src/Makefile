@@ -48,6 +48,10 @@ GDB       ?= gdb
 GDB_FLAGS ?= --args
 COMPUTE_SANITIZER ?= compute-sanitizer
 COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
+NCU ?= ncu
+NCU_FLAGS ?=
+NSYS ?= nsys
+NSYS_FLAGS ?= profile --trace=cuda
 
 ifneq ($(DEBUG),0)
 OBJ_DIR := build/debug-$(DEBUG)
@@ -57,7 +61,7 @@ endif
 # Keep sanitizer objects separate so changing SANITIZER never reuses stale objects.
 ifneq ($(SANITIZER),)
 OBJ_DIR := build/$(SANITIZER)$(if $(filter-out 0,$(DEBUG)),/debug-$(DEBUG))
-CXXFLAGS := $(filter-out -O3,$(CXXFLAGS)) -O1 -g -fno-omit-frame-pointer
+CXXFLAGS := $(filter-out -O0 -O3,$(CXXFLAGS)) -O1 -g -fno-omit-frame-pointer
 endif
 ifeq ($(SANITIZER),address)
 CXXFLAGS += -fsanitize=address
@@ -89,7 +93,7 @@ CUDA_HOME ?= $(or $(if $(CUDA_NVCC_PATH),$(patsubst %/bin/nvcc,%,$(CUDA_NVCC_PAT
 # Call nvcc by full path so it finds its helpers (cudafe++, ptxas) even when
 # its bin/ is not on PATH; falls back to plain `nvcc` if nothing was found.
 NVCC      := $(if $(CUDA_HOME),$(CUDA_HOME)/bin/nvcc,nvcc)$(if $(CUDA_HOST_CXX), -ccbin $(CUDA_HOST_CXX))
-CUDA_ARCH ?= sm_75
+CUDA_ARCH ?= sm_89
 # CUDA headers (cuda_runtime.h): override with `make CUDA_INC=/path/to/include`.
 # Defaults to the first existing include dir under CUDA_HOME.
 CUDA_INC  ?= $(patsubst %/cuda_runtime.h,%,$(firstword $(wildcard \
@@ -104,7 +108,7 @@ ifneq ($(DEBUG),0)
 NVCCFLAGS := $(filter-out -O3 -dlto,$(NVCCFLAGS)) -O0 -g -G
 endif
 ifneq ($(SANITIZER),)
-NVCCFLAGS := $(filter-out -O3,$(NVCCFLAGS)) -O1 -g -Xcompiler=-fno-omit-frame-pointer
+NVCCFLAGS := $(filter-out -O0 -O3,$(NVCCFLAGS)) -O1 -g -Xcompiler=-fno-omit-frame-pointer
 endif
 ifeq ($(SANITIZER),address)
 NVCCFLAGS += -Xcompiler=-fsanitize=address
@@ -118,6 +122,10 @@ else ifeq ($(RUNNER),valgrind)
 RUN_COMMAND := $(VALGRIND) $(VALGRIND_FLAGS)
 else ifeq ($(RUNNER),compute-sanitizer)
 RUN_COMMAND := $(COMPUTE_SANITIZER) $(COMPUTE_SANITIZER_FLAGS)
+else ifeq ($(RUNNER),ncu)
+RUN_COMMAND := $(NCU) $(NCU_FLAGS)
+else ifeq ($(RUNNER),nsys)
+RUN_COMMAND := $(NSYS) $(NSYS_FLAGS)
 else ifeq ($(RUNNER),gdb)
 RUN_COMMAND := $(GDB) $(GDB_FLAGS)
 else ifeq ($(RUNNER),address)
@@ -131,7 +139,7 @@ $(error RUNNER=thread requires SANITIZER=thread)
 endif
 RUN_COMMAND :=
 else
-$(error RUNNER must be empty, 'valgrind', 'compute-sanitizer', 'gdb', 'address', or 'thread')
+$(error RUNNER must be empty, 'valgrind', 'compute-sanitizer', 'ncu', 'nsys', 'gdb', 'address', or 'thread')
 endif
 
 ifeq ($(BACKEND),zluda)
@@ -267,6 +275,8 @@ help:
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
 	@echo "  RUNNER=compute-sanitizer  run any run* target under NVIDIA Compute Sanitizer (memcheck by default)"
+	@echo "  RUNNER=ncu          profile CUDA kernels with Nsight Compute"
+	@echo "  RUNNER=nsys         profile a CUDA timeline with Nsight Systems"
 	@echo "  RUNNER=gdb          launch any run* target in GDB"
 	@echo "  DEBUG=<level>       select flags from the table below; nonzero levels use -O0 -g and CUDA -G"
 	@echo "  SANITIZER=address   build with AddressSanitizer (separate build/address/)"
@@ -274,6 +284,8 @@ help:
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
 	@echo "  VALGRIND_FLAGS=...      override Valgrind options"
 	@echo "  COMPUTE_SANITIZER_FLAGS=...  override Compute Sanitizer options (default: --tool memcheck)"
+	@echo "  NCU_FLAGS=...           Nsight Compute options (e.g. --kernel-name regex:NAME)"
+	@echo "  NSYS_FLAGS=...          Nsight Systems command and options (default: profile --trace=cuda)"
 	@echo "  GDB_FLAGS=...           override GDB options"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
 	@echo "  clean               remove build/ and $(TARGET)"
@@ -284,12 +296,14 @@ help:
 	@echo
 	@echo "Variables (override as make VAR=value):"
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
-	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
+	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | ncu | nsys | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
 	@echo "  MOUSE_MODE=$(MOUSE_MODE)        0: X11, 1: WSL, 2: Xpra"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"
+	@echo "  NCU=$(NCU) NCU_FLAGS=$(NCU_FLAGS)"
+	@echo "  NSYS=$(NSYS) NSYS_FLAGS=$(NSYS_FLAGS)"
 	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
 	@echo "  ZLUDA_DIR=$(ZLUDA_DIR)"
 	@echo "  ROCM_LIB_DIR=$(ROCM_LIB_DIR)"
