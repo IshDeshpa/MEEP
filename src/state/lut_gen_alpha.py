@@ -10,9 +10,18 @@ class Elem(IntEnum):
     WATER = 1
     EARTH = 2
     LAVA = 3
-    BLOCK = 4
-    EMITTER = 5
-    VOID = 6
+    NATURE = 4
+    STEAM = 5
+    FIRE = 6
+    ACID = 7
+    ICE = 8
+    HOTAIR = 9
+    EXPLOSION = 10
+    SAND = 11
+    BOMB = 12
+    BLOCK = 13
+    EMITTER = 14
+    VOID = 15
 
 unused = set()
 
@@ -21,6 +30,15 @@ properties = {
     Elem.WATER:   {"density": 1, "movable": True},
     Elem.LAVA:    {"density": 2, "movable": True},
     Elem.EARTH:   {"density": 3, "movable": True},
+    Elem.NATURE:  {"density": 2, "movable": True},
+    Elem.STEAM:   {"density": 0, "movable": True},
+    Elem.FIRE:    {"density": 0, "movable": True},
+    Elem.ACID:    {"density": 1, "movable": True},
+    Elem.ICE:     {"density": 2, "movable": True},
+    Elem.HOTAIR:  {"density": 0, "movable": True},
+    Elem.EXPLOSION: {"density": 0, "movable": True},
+    Elem.SAND:    {"density": 2, "movable": True},
+    Elem.BOMB:    {"density": 2, "movable": True},
     Elem.BLOCK:   {"density": 0, "movable": False},
     Elem.EMITTER: {"density": 0, "movable": False},
     Elem.VOID:    {"density": 0, "movable": False},

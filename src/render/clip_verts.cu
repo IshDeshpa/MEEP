@@ -14,7 +14,7 @@ void clipVertsLaunch() {
     uint16_t TPB = 256; // Threads per block
     std::size_t blocks = (num_entities + TPB - 1) / TPB; // Number of blocks needed
 
-    clipVertsByNear<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.tris->data(), num_entities);
+    clipVertsByNear<<<blocks, TPB, 0, r.render_stream>>>(r.verts->data(), r.tris->data(), r.tri_directions->data(), num_entities);
     cudaDeviceSynchronize();
 
 #if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
@@ -50,7 +50,7 @@ MEEP_DEVICE std::size_t searchEdgeCache(EdgeCacheEntry *cache, std::size_t cache
 }
 
 
-MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entities) {
+MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, Direction *tri_directions, std::size_t num_entities) {
     std::size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= num_entities) return;
     
@@ -144,6 +144,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
 
                     t.x = N_a1_idx;
                     Tri &new_t = tris[t_base + tri_ct + new_t_count];
+                    tri_directions[t_base + tri_ct + new_t_count] = tri_directions[t_base + i];
                     new_t.x = N_a1_idx;
                     new_t.y = t.z;
                     new_t.z = N_a2_idx;
@@ -190,6 +191,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
                     // new triangles - {a, N_b2, c} and {a, N_b1, N_b2}
                     t.y = N_b2_idx;
                     Tri &new_t = tris[t_base + tri_ct + new_t_count];
+                    tri_directions[t_base + tri_ct + new_t_count] = tri_directions[t_base + i];
                     new_t.x = t.x;
                     new_t.y = N_b1_idx;
                     new_t.z = N_b2_idx;
@@ -237,6 +239,7 @@ MEEP_GLOBAL void clipVertsByNear(Vertex *verts, Tri *tris, std::size_t num_entit
                     // new tri - {a, b, N_c1} and {a, N_c1, N_c2}
                     t.z = N_c1_idx;
                     Tri &new_t = tris[t_base + tri_ct + new_t_count];
+                    tri_directions[t_base + tri_ct + new_t_count] = tri_directions[t_base + i];
                     new_t.x = t.x;
                     new_t.y = N_c1_idx;
                     new_t.z = N_c2_idx;

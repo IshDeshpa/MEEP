@@ -13,12 +13,23 @@ __device__ static bool isFaceExposed(CellRef &c, DeviceWorldView dwv, Direction 
   const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[d]);
 
   // Anything outside the visible world counts as exposed, without reading the padding.
-  return adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
-          adjacent.x >= dwv.visibleN() ||
-          adjacent.y >= dwv.visibleM() ||
-          adjacent.z >= dwv.visibleK() ||
-          dwv.readCell(adjacent).elem == Element::AIR;
+  if (adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||
+          adjacent.x >= dwv.visibleN() || adjacent.y >= dwv.visibleM() || adjacent.z >= dwv.visibleK()) {
+    return true;
+  }
+
+  const Cell neighbor = dwv.readCell(adjacent);
+  if (neighbor.elem == Element::AIR) {
+    return true;
+  } else if (neighbor.elem == c.cell.elem) {
+    return false;
+  } else {
+    return ELEMENT_COLOR_LUT[neighbor.elem].a < 255; // if neighbour isn't opaque then face exposed
+  }
+
 }
+
+
 
 // A face is renderable when its cell is not AIR and its neighbor is AIR.
 __device__ static bool isRenderable(CellRef &c, DeviceWorldView dwv, Direction d){

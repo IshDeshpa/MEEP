@@ -37,7 +37,7 @@ From `src/`, `make run` constructs a 100x100x100 blank AIR world with a BLOCK
 shell. Use `make run ARGS="-n 20 -m 10 -k 30"` to change blank dimensions, or
 `make run ARGS="--world worlds/world_water_100x1x100.bin"` to explicitly load the
 included WATER scene. File worlds supply their own dimensions; combining
-`--world` with dimension options is an error. Saved worlds live in `src/worlds/`.
+`--world` with dimension options is an error. Saved worlds live in `src/worlds/`. Material IDs now follow the 16-element palette: BLOCK, EMITTER, and VOID use IDs 13, 14, and 15. Older world files and LUTs that used IDs 4, 5, and 6 for those materials must be migrated or regenerated; those IDs now represent NATURE, STEAM, and FIRE.
 The `gen_world` tool writes there regardless of the working directory, using
 descriptive filenames such as `world_water_sphere_5x5x5.bin`:
 `make gen_world ARGS=water` (an optional output filename is accepted).

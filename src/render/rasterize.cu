@@ -3,6 +3,8 @@
 #include <limits>
 #include <cstdio>
 
+#define BACKGROUND_COLOR 25 // value of all r,g,b channel for bg
+
 // want to tweak these when testing to see most efficient block size for rasterization
 #define RASTER_BLOCK_X 16
 #define RASTER_BLOCK_Y 16
@@ -16,8 +18,8 @@ void rasterizeLaunch() {
 
 
 
-    rasterize<<<grid, block, 0, r.render_stream>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(), 
-                                r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris());
+    rasterize<<<grid, block, 0, r.render_stream>>>(r.verts2d->data(), r.verts->data(), r.tris->data(), r.tris->size(),
+                                r.verts2d->size(), screen, r.entities->data(), 2 * HostCube::numTris(), r.tri_directions->data());
 
     KERNEL_CHECK();
 
@@ -29,11 +31,11 @@ void rasterizeLaunch() {
     std::size_t colored_pixels = 0;
 
     for (const Color& pixel : camera.framebuffer) {
-        if (pixel.r != 0 || pixel.g != 0 || pixel.b != 0)
+        if (pixel.r != BACKGROUND_COLOR || pixel.g != BACKGROUND_COLOR || pixel.b != BACKGROUND_COLOR)
             ++colored_pixels;
     }
 
-    printf("Rasterizer: %zu / %zu pixels are non-black\n",
+    printf("Rasterizer: %zu / %zu pixels are not part of the background\n",
            colored_pixels, camera.framebuffer.size());
 
     const std::size_t sample_x[] = {
@@ -65,16 +67,16 @@ void rasterizeLaunch() {
     all signs need to be the same for the point to be inside the triangle: all 3 positive or all 3 negative
     if edge returns 0, then the other two edge must agree with sign
 
-    this is also equiv to the cross product u = p-a, v = b-a. UxVy - UyVx = |u||v|sin(theta) 
+    this is also equiv to the cross product u = p-a, v = b-a. UxVy - UyVx = |u||v|sin(theta)
 */
 MEEP_DEVICE float edge(const Vertex2D &a, const Vertex2D &b, float p_x, float p_y) {
     return (p_x - a.x) * (b.y - a.y) - (p_y - a.y) * (b.x - a.x);
 }
 
 
-MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const Tri *tris, 
+MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const Tri *tris,
                             std::size_t num_tris, std::size_t num_verts, DeviceScreenData screen,
-                            const CellRenderEntity* entities, std::size_t tris_per_entity) {
+                            const CellRenderEntity* entities, std::size_t tris_per_entity, const Direction* tri_directions) {
 
 
     const std::size_t x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -82,7 +84,7 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
 
     if (x >= screen.WIDTH || y >= screen.HEIGHT) return;
 
-    // idx is in row major order 
+    // idx is in row major order
     const std::size_t idx = y * screen.WIDTH + x;
 
     // center of the pixel
@@ -90,23 +92,51 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
     const float pixel_center_y = static_cast<float>(y) + 0.5f;
 
     // transparency, max of 3 transparent colors to blend
-    Color transparent_colors[3]{}; // initialize to black
-    float transparent_depths[3] = {std::numeric_limits<float>::max(), 
+    Color transparent_colors[3]{}; // initialize to background color
+    float transparent_depths[3] = {std::numeric_limits<float>::max(),
         std::numeric_limits<float>::max(), std::numeric_limits<float>::max()}; // initialize to max depth
 
-    Color best_color{50, 50, 50, 255}; // initialize to black
+    Color bg_color{BACKGROUND_COLOR, BACKGROUND_COLOR, BACKGROUND_COLOR, 255}; // initialize to background color
     float best_depth = std::numeric_limits<float>::max(); // initialize to max depth
 
     for (std::size_t t = 0; t < num_tris; ++t) {
         const Tri &tri = tris[t];
-        
+
         // skip culled triangles
         if (tri.x >= num_verts || tri.y >= num_verts || tri.z >= num_verts) {
             continue;
         }
 
         const std::size_t entity_idx = t / tris_per_entity;
-        const Color color = entities[entity_idx].color;
+        Color color = entities[entity_idx].color;
+
+        const Direction dir = tri_directions[t];
+
+        const glm::vec3 normal = glm::vec3(DIRECTION_LUT[dir]);
+
+        const glm::vec3 cube_center = glm::vec3(entities[entity_idx].coords());
+
+        // For your unit cubes centered on their cell coordinates.
+        const glm::vec3 face_center = cube_center + 0.5f * normal;
+
+        const glm::vec3 light_position(-4.0f, 10.0f, 4.0f);
+        const glm::vec3 toward_light = light_position - face_center;
+
+        const float distance_squared = glm::dot(toward_light, toward_light);
+
+        float diffuse = 0.0f;
+        if (distance_squared > 0.0f) {
+            const glm::vec3 light_direction = toward_light / sqrtf(distance_squared);
+            diffuse = glm::max(0.0f, glm::dot(normal, light_direction));
+        }
+
+        const float brightness = 0.6f + 0.4f * diffuse;
+
+
+
+        color.r = static_cast<std::uint8_t>(color.r * brightness);
+        color.g = static_cast<std::uint8_t>(color.g * brightness);
+        color.b = static_cast<std::uint8_t>(color.b * brightness);
 
         if (color.a == 0) { // fully transparent, skip
             continue;
@@ -144,14 +174,14 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
 
         // P = alpha * A + beta * B + gamma * C
         const float depth = alpha * va.z + beta * vb.z + gamma * vc.z;
-        
+
         if (!(depth >= -1.0f && depth <= 1.0f))
             continue;
 
         if (color.a == 255) { // fully opaque, just write to buffer
             if (depth < best_depth) {
                 best_depth = depth;
-                best_color = color;
+                bg_color = color;
             }
         } else {
             // partially transparent, blend with existing color
@@ -170,16 +200,21 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
             }
         }
     }
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 2; i >= 0; --i) {
         if (transparent_depths[i] < best_depth) {
             const Color &trans_color = transparent_colors[i];
-            const Color &opaque_color = best_color;
+            const Color &opaque_color = bg_color;
+            const float opacity = trans_color.a / 255.0f;
+            // do weighted avg of all channels
+            bg_color.r = opacity * trans_color.r + (1 - opacity) * opaque_color.r;
+            bg_color.g = opacity * trans_color.g + (1 - opacity) * opaque_color.g;
+            bg_color.b = opacity * trans_color.b + (1 - opacity) * opaque_color.b;
+            bg_color.a = 255; // full opaque
 
-            
         }
     }
 
     // write to buf
-    screen.framebuffer[idx] = best_color;
+    screen.framebuffer[idx] = bg_color;
     screen.depthbuffer[idx] = best_depth;
 }

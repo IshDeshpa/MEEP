@@ -8,7 +8,8 @@ import struct
 import sys
 
 ELEMENTS = {name: index for index, name in enumerate(
-    ("air", "water", "earth", "lava", "block", "emitter", "void"))}
+    ("air", "water", "earth", "lava", "nature", "steam", "fire", "acid",
+     "ice", "hotair", "explosion", "sand", "bomb", "block", "emitter", "void"))}
 WORLDS = Path(__file__).resolve().parents[1] / "worlds"
 
 
