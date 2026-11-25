@@ -1,7 +1,9 @@
 #pragma once
 
+#include "config.hpp"
+
 #include "render/camera.hpp"
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
 #include "window/pointer_motion.hpp"
 #endif
 #include <X11/X.h>
@@ -9,7 +11,7 @@
 #include <X11/Xutil.h>
 #include <bitset>
 #include <mutex>
-#if defined(MEEP_WSL_MOUSE) || defined(MEEP_XPRA_MOUSE)
+#if MEEP_MOUSE_MODE != 0
 #include <unordered_map>
 #endif
 #include <unordered_set>
@@ -46,7 +48,7 @@ public:
   void updateScreen(HostScreen &s);
 
   // Returns the accumulated movement since the previous call, or {0, 0} if none.
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   std::pair<double, double> consumeMouseMove();
 #else
   std::pair<int, int> consumeMouseMove();
@@ -61,7 +63,7 @@ private:
 
   bool grabInput();
   void releaseInput();
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   void handleWslMouseMotion(const XIRawEvent &motion);
 #endif
 
@@ -76,10 +78,10 @@ private:
 
   int xi_opcode;
   bool detectable_repeat = false;
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   std::unordered_map<int, PointerMotion> wsl_pointer_sources;
 #endif
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
   struct PointerSource {
     bool absolute_synthetic = false;
     bool have_position = false;
@@ -90,7 +92,7 @@ private:
 
   bool focused;
   std::mutex mouse_move_mutex;
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   std::pair<double, double> pending_mouse_move{0, 0};
 #else
   std::pair<int, int> pending_mouse_move{0, 0};

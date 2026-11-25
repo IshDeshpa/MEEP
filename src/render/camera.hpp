@@ -105,7 +105,7 @@ public:
     glm::dvec3 forward = glm::normalize(look_dir);
     forward = glm::rotate(forward, -dx * mouse_sensitivity, UP);
     const glm::dvec3 right = glm::normalize(glm::cross(forward, UP));
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
     const double pitch = std::asin(std::clamp(glm::dot(forward, UP), -1.0, 1.0));
     const double pitch_limit = std::asin(0.99);
     const double next_pitch =

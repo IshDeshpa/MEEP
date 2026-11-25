@@ -1,5 +1,5 @@
 #include "config.hpp"
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
 #include "window/pointer_motion.hpp"
 #endif
 
@@ -7,7 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
 static void check(bool condition, const char *message) {
   if (!condition) throw std::runtime_error(message);
 }
@@ -26,7 +26,7 @@ static std::pair<double, double> readMotion(PointerMotion &source,
 #endif
 
 int main() {
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   PointerMotion relative;
   const double relative_values[]{-4.5, 7.25, 120.0};
   const auto [relative_x, relative_y] = readMotion(relative, 0b111, relative_values);
@@ -73,12 +73,12 @@ int main() {
 
 #endif
 
-#if defined(MEEP_WSL_MOUSE) || defined(MEEP_XPRA_MOUSE)
+#if MEEP_MOUSE_MODE != 0
   static_assert(MOUSE_SENSITIVITY == 0.002);
 #else
   static_assert(MOUSE_SENSITIVITY == 0.00001);
 #endif
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   std::cout << "WSL mouse input conversion and sensitivity checks passed\n";
 #else
   std::cout << "Legacy mouse sensitivity defaults checked\n";

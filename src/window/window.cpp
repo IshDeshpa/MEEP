@@ -8,7 +8,7 @@
 #include <X11/XKBlib.h>
 #include <X11/extensions/XInput2.h>
 #include <stdexcept>
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
 #include <string_view>
 #endif
 
@@ -127,7 +127,7 @@ GameWindow::GameWindow(){
   mask.mask = mask_bytes;
 
   XISelectEvents(this->d, DefaultRootWindow(d), &mask, 1);
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   unsigned char device_mask_bytes[XIMaskLen(XI_HierarchyChanged)] = {};
   XISetMask(device_mask_bytes, XI_DeviceChanged);
   XISetMask(device_mask_bytes, XI_HierarchyChanged);
@@ -163,14 +163,14 @@ bool GameWindow::grabInput(){
     return false;
   }
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   wsl_pointer_sources.clear();
 #endif
   return true;
 }
 
 void GameWindow::releaseInput(){
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
   wsl_pointer_sources.clear();
   {
     std::lock_guard lock(mouse_move_mutex);
@@ -212,7 +212,7 @@ std::bitset<256> GameWindow::pressedKeys(){
   return held_keys;
 }
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
 std::pair<double, double> GameWindow::consumeMouseMove(){
 #else
 std::pair<int, int> GameWindow::consumeMouseMove(){
@@ -227,7 +227,7 @@ std::pair<bool, bool> GameWindow::consumeMouseClicks(){
           std::exchange(pending_right_click, false)};
 }
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
 void GameWindow::handleWslMouseMotion(const XIRawEvent &motion) {
   auto [source_it, inserted] = wsl_pointer_sources.try_emplace(motion.sourceid);
   auto &source = source_it->second;
@@ -279,7 +279,7 @@ void GameWindow::join(){
         e.xcookie.extension == xi_opcode &&
         XGetEventData(d, &e.xcookie)) {
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
       if (e.xcookie.evtype == XI_DeviceChanged ||
           e.xcookie.evtype == XI_HierarchyChanged) {
         wsl_pointer_sources.clear();
@@ -290,10 +290,10 @@ void GameWindow::join(){
         const auto* motion =
             static_cast<const XIRawEvent*>(e.xcookie.data);
 
-#ifdef MEEP_WSL_MOUSE
+#if MEEP_MOUSE_MODE == 1
         handleWslMouseMotion(*motion);
 #else
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
         auto [source_it, inserted] = pointer_sources.try_emplace(motion->sourceid);
         auto &source = source_it->second;
         if (inserted) {
@@ -310,7 +310,7 @@ void GameWindow::join(){
         double dx = 0.0;
         double dy = 0.0;
         const double* value = motion->raw_values;
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
         bool has_x = false, has_y = false;
 #endif
 
@@ -322,20 +322,20 @@ void GameWindow::join(){
 
           if (axis == 0) {
             dx = *value;
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
             has_x = true;
 #endif
           }
           if (axis == 1) {
             dy = *value;
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
             has_y = true;
 #endif
           }
           ++value;
         }
 
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
         // Xpra injects absolute coordinates through the XTEST pointer even
         // though XInput describes its valuators as relative.
         if (source.absolute_synthetic) {
@@ -391,7 +391,7 @@ void GameWindow::join(){
 
       if(XLookupKeysym(&e.xkey, 0) == XK_Escape){
         this->focused = false;
-#ifdef MEEP_XPRA_MOUSE
+#if MEEP_MOUSE_MODE == 2
         for (auto &[id, source] : pointer_sources) {
           (void)id;
           source.have_position = false;

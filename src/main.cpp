@@ -146,10 +146,10 @@ int main(int argc, char* argv[]){
                 << "Default world: blank AIR interior, 100x100x100.\n"
                 << "Dimensions apply to constructed worlds; --world uses the file dimensions.\n"
                 << "Default LUT: " << ALPHA_LUT_PATH << '\n'
-#ifdef MEEP_WSL_MOUSE
-                << "Mouse input: WSL workaround (MEEP_WSL_MOUSE).\n"
-#elif defined(MEEP_XPRA_MOUSE)
-                << "Mouse input: Xpra workaround (MEEP_XPRA_MOUSE).\n"
+#if MEEP_MOUSE_MODE == 1
+                << "Mouse input: WSL workaround (MEEP_MOUSE_MODE=1).\n"
+#elif MEEP_MOUSE_MODE == 2
+                << "Mouse input: Xpra workaround (MEEP_MOUSE_MODE=2).\n"
 #else
                 << "Mouse input: original behavior.\n"
 #endif

@@ -17,16 +17,12 @@ DEBUG_FLAGS_1 := MEEP_DEBUG
 DEBUG_FLAGS_2 := $(DEBUG_FLAGS_1) MEEP_DEBUG_RENDER_TRACE
 
 DEBUG    ?= 0
-XPRA_MOUSE ?= 0
-WSL_MOUSE ?= 0
-ifeq ($(filter $(XPRA_MOUSE),0 1),)
-$(error XPRA_MOUSE must be 0 or 1)
+MOUSE_MODE ?= 0
+ifneq ($(words $(MOUSE_MODE)),1)
+$(error MOUSE_MODE must be 0 (X11), 1 (WSL), or 2 (Xpra))
 endif
-ifeq ($(filter $(WSL_MOUSE),0 1),)
-$(error WSL_MOUSE must be 0 or 1)
-endif
-ifeq ($(WSL_MOUSE)$(XPRA_MOUSE),11)
-$(error WSL_MOUSE and XPRA_MOUSE cannot both be 1)
+ifeq ($(filter $(MOUSE_MODE),0 1 2),)
+$(error MOUSE_MODE must be 0 (X11), 1 (WSL), or 2 (Xpra))
 endif
 DEBUG_LEVELS := $(sort $(patsubst DEBUG_FLAGS_%,%,$(filter DEBUG_FLAGS_%,$(.VARIABLES))))
 ifeq ($(filter $(DEBUG),$(DEBUG_LEVELS)),)
@@ -37,12 +33,7 @@ DEBUG_FLAGS := $(DEBUG_FLAGS_$(DEBUG))
 DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
 # tick.hpp uses #ifdef, so MEEP_DEBUG must be absent at DEBUG=0.
 DEFINES += $(addprefix -D,$(addsuffix =1,$(DEBUG_FLAGS)))
-ifeq ($(XPRA_MOUSE),1)
-DEFINES += -DMEEP_XPRA_MOUSE=1
-endif
-ifeq ($(WSL_MOUSE),1)
-DEFINES += -DMEEP_WSL_MOUSE=1
-endif
+DEFINES += -DMEEP_MOUSE_MODE=$(MOUSE_MODE)
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 # libraries go after the objects on the link line, so they are kept by the linker
@@ -187,7 +178,7 @@ $(TARGET): $(OBJS) build/main.mode | $(ALPHA_LUT)
 
 build/main.mode: force-main-mode
 	@mkdir -p $(dir $@)
-	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS) XPRA_MOUSE=$(XPRA_MOUSE) WSL_MOUSE=$(WSL_MOUSE)' > $@.tmp
+	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS) MOUSE_MODE=$(MOUSE_MODE)' > $@.tmp
 	@cmp -s $@.tmp $@ || mv $@.tmp $@
 	@rm -f $@.tmp
 
@@ -295,8 +286,7 @@ help:
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
-	@echo "  XPRA_MOUSE=$(XPRA_MOUSE)       convert Xpra XTEST pointer positions to deltas (0 or 1)"
-	@echo "  WSL_MOUSE=$(WSL_MOUSE)        enable the WSL absolute-pointer workaround (0 or 1; exclusive with XPRA_MOUSE)"
+	@echo "  MOUSE_MODE=$(MOUSE_MODE)        0: X11, 1: WSL, 2: Xpra"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"

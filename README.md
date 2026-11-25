@@ -70,24 +70,19 @@ compatible table without rebuilding, for example
 also defaults to alpha using its absolute source-tree path. The old `src/lut.bin`
 is unused unless explicitly selected at runtime.
 
-Click the window to capture input; Escape releases it. Default mouse behavior
-retains the original input conversion and pitch rule, with sensitivity
-`0.00001` for normal builds and `0.002` for `XPRA_MOUSE=1` builds. Xpra users
-can keep using `make -C src run XPRA_MOUSE=1`.
+Click the window to capture input; Escape releases it. Select the mouse input
+mode at build time with `MOUSE_MODE`: `0` is normal X11 (the default), `1` is
+the WSL absolute-pointer workaround, and `2` is the Xpra workaround. For example,
+`make -C src run MOUSE_MODE=1` or `make -C src run MOUSE_MODE=2`.
+The WSL mode converts absolute positions to signed pixel deltas, preserves
+fractional movement, resets position baselines on capture changes, and clamps
+pitch before a flip. The default sensitivity is `0.00001` for X11 and `0.002`
+for WSL and Xpra. Use `--mouse-sensitivity VALUE` to override the build's
+sensitivity without rebuilding; `0` disables mouse look.
 
-WSL's absolute pointer workaround is selected at compile time:
-`make -C src run WSL_MOUSE=1 ARGS="--world worlds/world_lava_sphere_5x5x5.bin"`.
-This defines `MEEP_WSL_MOUSE`; only this build converts absolute positions to
-signed pixel deltas, preserves fractional movement, resets position baselines
-on capture changes, and clamps
-pitch before a flip. It defaults to sensitivity `0.002`.
-Use `--mouse-sensitivity VALUE` to override the build's sensitivity without
-rebuilding; `0` disables mouse look. Defaults live in `src/config.hpp`.
-`make -C src test-mouse` checks sensitivity defaults; add `XPRA_MOUSE=1` to
-check Xpra defaults or `WSL_MOUSE=1` to also check WSL input conversion without
-CUDA hardware or an X display. `WSL_MOUSE` and `XPRA_MOUSE` are mutually
-exclusive and default to `0`.
-Changing either option rebuilds affected objects automatically.
+`make -C src test-mouse MOUSE_MODE=1` checks WSL input conversion and sensitivity
+without CUDA hardware or an X display; modes `0` and `2` check their sensitivity
+defaults. Changing the mode rebuilds affected objects automatically.
 
 Run `make` without `-j` for serial builds in a small WSL instance. Editing
 `config.hpp` rebuilds most CUDA files, and bare `-j` launches unlimited compiler
@@ -119,7 +114,7 @@ The older `world_padding` test still needs its call sites adapted to the LUT API
 `make run-render_mask_lifetime` checks triangle-mask storage across 1,024
 radius-5 water-sphere snapshots, eight full CUDA render passes, and an empty
 snapshot. It verifies mask pointers and visibility against a CPU reference.
-Like other application builds, add `WSL_MOUSE=1` for the WSL build configuration.
+Like other application builds, add `MOUSE_MODE=1` for the WSL build configuration.
 
 ## CUDA experiment
 
