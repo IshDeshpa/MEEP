@@ -70,7 +70,7 @@ struct Color {
 
 DEFINE_ENUM_LUT(ELEMENT_COLOR_LUT, Element, Color, 
     {  0,   0,   0,   0}, // AIR
-    { 30, 144, 255, 128}, // WATER
+    { 30, 144, 255, 255}, // WATER
     {139,  90,  43, 255}, // EARTH
     {255,  69,   0, 255}, // LAVA
     

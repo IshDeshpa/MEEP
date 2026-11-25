@@ -196,6 +196,10 @@ lut: $(ALPHA_LUT)
 
 alpha-lut: $(ALPHA_LUT)
 
+# World generation is a standalone Python tool and does not require CUDA.
+gen_world:
+	$(PYTHON) tests/gen_world.py $(ARGS)
+
 $(ALPHA_LUT): state/lut_gen_alpha.py
 	@mkdir -p $(dir $@)
 	$(PYTHON) $< $@
@@ -248,6 +252,7 @@ help:
 	@echo "  run                 build and run $(TARGET) with the alpha LUT (ARGS can override --lut)"
 	@echo "  lut                 generate/update the alpha LUT"
 	@echo "  alpha-lut           generate/update $(ALPHA_LUT) from the alpha rules (no CUDA needed)"
+	@echo "  gen_world           generate a world with ARGS='ELEMENT [OUTPUT]' or '--json INPUT [OUTPUT]'"
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
@@ -296,4 +301,4 @@ clean:
 # Preserve compiled intermediates, but let missing runtime data be regenerated.
 .SECONDARY: $(OBJS) $(TEST_CPP_OBJS) $(TEST_CU_OBJS) $(TEST_CPP_TARGETS) $(TEST_CU_TARGETS)
 
-.PHONY: all run lut alpha-lut force-main-mode $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean
+.PHONY: all run lut alpha-lut gen_world force-main-mode $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean

@@ -17,9 +17,9 @@
 #include <chrono>
 #include <thread>
 
-TickSource world_tick{WORLD_TICK_RATE};
-TickSource render_tick{RENDER_TICK_RATE};
-TickSource input_tick{INPUT_TICK_RATE};
+TickSource world_tick{WORLD_TICK_RATE, "world"};
+TickSource render_tick{RENDER_TICK_RATE, "render"};
+TickSource input_tick{INPUT_TICK_RATE, "input"};
 
 std::unique_ptr<WorldState> world;
 std::unique_ptr<LUT> lut;
@@ -28,8 +28,6 @@ std::mutex render_sync_mutex;
 std::condition_variable_any render_sync;
 bool frame_ready = false;
 bool frame_rendered = true;
-
-using Clock = std::chrono::steady_clock;
 
 void inputUpdate(GameWindow& window, Camera& camera){
   std::bitset<256> keys = window.pressedKeys();
@@ -65,11 +63,6 @@ void inputUpdate(GameWindow& window, Camera& camera){
   } else if(window.isPressed(' ', keys)){
     camera.moveUp(PLAYER_SPEED);
   }
-
-
-#ifdef MEEP_DEBUG
-    std::printf("Pos: %0.2f, %0.2f, %0.2f\n", camera.getPos().x, camera.getPos().y, camera.getPos().z);
-#endif
 }
 
 void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera) {

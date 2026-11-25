@@ -36,7 +36,24 @@ included WATER scene. File worlds supply their own dimensions; combining
 `--world` with dimension options is an error. Saved worlds live in `src/worlds/`.
 The `gen_world` tool writes there regardless of the working directory, using
 descriptive filenames such as `world_water_sphere_5x5x5.bin`:
-`make run-gen_world ARGS=water` (an optional output filename is accepted).
+`make gen_world ARGS=water` (an optional output filename is accepted).
+
+For multiple spheres, create a JSON file such as:
+
+```json
+{
+  "dimensions": [30, 20, 30],
+  "spheres": [
+    {"center": [8, 6, 8], "element": "water", "radius": 4},
+    {"center": [20, 6, 20], "element": "lava", "radius": 3}
+  ]
+}
+```
+
+Run `make gen_world ARGS="--json /path/to/scene.json my_world.bin"` from
+`src/`. The output goes to `src/worlds/` (default `world_spheres.bin`). Centers
+are zero-based visible-world coordinates; spheres are clipped at world edges,
+and later spheres overwrite earlier ones where they overlap. Empty space is AIR.
 
 `make lut` (or `make alpha-lut`) generates `build/lut_alpha.bin` from `state/lut_gen_alpha.py`
 (65,536 little-endian uint16 entries, 128 KiB). Application and blank-world test

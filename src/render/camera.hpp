@@ -112,10 +112,6 @@ public:
     }
 
     look_dir = forward;
-
-#ifdef MEEP_DEBUG
-    std::printf("look: %0.2f, %0.2f, %0.2f\n", look_dir.x, look_dir.y, look_dir.z);
-#endif
   }
 
   constexpr glm::dvec3 getPos(){

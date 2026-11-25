@@ -16,6 +16,8 @@ static constexpr unsigned TICK_HIST = 6000;
 // Ticks per second. A zero rate leaves the ticker unpaced.
 using TickRate = float;
 
+using Clock = std::chrono::steady_clock;
+
 namespace TickRates {
 inline constexpr TickRate ONE_TPS = 1.0F;
 inline constexpr TickRate TWO_TPS = 2.0F;
@@ -29,13 +31,20 @@ inline constexpr TickRate UNLIMITED = 0.0F;
 class TickSource {
 public:
   explicit TickSource(TickRate ticks_per_second) : ticks_per_second(ticks_per_second) {}
+  explicit TickSource(TickRate ticks_per_second, std::string name) : ticks_per_second(ticks_per_second), name(name) {}
 
-  void incAndWait(steady_clock::time_point start) {
+  void incAndWait(Clock::time_point start) {
     counter++;
     if (ticks_per_second > 0.0F) {
-      const auto period = duration_cast<steady_clock::duration>(
+      const auto period = duration_cast<Clock::duration>(
           duration<float>(1.0F / ticks_per_second));
-      std::this_thread::sleep_until(start + period);
+    
+      Clock::time_point now = Clock::now();
+      if(now < start + period) std::this_thread::sleep_until(start + period);
+      else {
+        printf("%s tick overrun: %0.2f\n", this->name.c_str(),
+                  std::chrono::duration<double>(now - (start + period)).count());
+      }
     }
   }
 
@@ -43,12 +52,13 @@ public:
 
 private:
   TickRate ticks_per_second{TickRates::SIXTY_TPS};
+  std::string name{"anonymous"};
 
 #ifdef MEEP_DEBUG
-  steady_clock::duration recent_tick_times[TICK_HIST];
+  Clock::duration recent_tick_times[TICK_HIST];
 
-  steady_clock::duration averageTickTime(size_t interval) {
-    steady_clock::duration total = steady_clock::duration::zero();
+  Clock::duration averageTickTime(size_t interval) {
+    Clock::duration total = Clock::duration::zero();
     interval = std::min(interval, std::min(counter, std::size(recent_tick_times)));
     if (interval == 0) return total;
     for (size_t i = 0; i < interval; i++) {

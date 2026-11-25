@@ -1,0 +1,6 @@
+{
+  "dimensions": [30, 20, 30],
+  "spheres": [
+    {"center": [8, 4, 8], "element": "water", "radius": 3}
+  ]
+}
