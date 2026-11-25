@@ -45,12 +45,21 @@ The status of probabilistic transitions should be confirmed separately.
   Both phases cover every visible cell. The caller waits for completion and
   calls swapBuffers before submitting the next tick.
 - `src/main.cpp`: the CPU ticker submits a tick, waits for stream completion,
-  and sleeps until its requested deadline. main does not yet start the ticker.
+  swaps buffers, and sleeps until its requested deadline. Main starts world,
+  render, and input threads. A shared `world_mutex` excludes world updates
+  from the renderer's complete `stateToWorldLaunch` snapshot operation.
 - CUDA calls use the teammate's CPU-facing src/extra/check.hpp declaration
   and src/extra/check.cu implementation; failure paths release partially
   allocated buffers. GPU completion errors are checked by waitForTick.
-- `src/render/render.cu` is a CUDA hello-world stub; the generic renderer
-  experiment is a CPU image-writing prototype. Neither yet renders live worlds.
+- `src/render/` implements the custom CUDA renderer. `stateToWorldLaunch`
+  derives independent cell render entities from the live world and waits for
+  all world reads to finish. Later GPU stages use those entities and geometry,
+  allowing simulation updates after the snapshot lock is released.
+  Entities borrow triangle-mask slices from a renderer-owned DeviceBuffer;
+  replacing or clearing the snapshot releases its mask storage. Frame creation
+  does not allocate individual masks from the device heap. This replaces a
+  leaking per-entity device-side new[] allocation that was confirmed to fail
+  during repeated snapshots with otherwise ample free VRAM.
 - Scheduling experiments still use synthetic rules and fixed partitions.
   Their six-face/twelve-edge workloads do not measure the alpha's four-tick
   schedule, its padding, or complete application performance.
@@ -118,9 +127,10 @@ Main constructs a blank AIR world by default (100x100x100, configurable with
 `-n/-m/-k`). Only `--world FILE` selects a serialized scene; file dimensions and
 dimension options are mutually exclusive. The included WATER scene is named
 `src/worlds/world_water_100x1x100.bin`. All saved scenes and world generator
-outputs live in `src/worlds/`; the generator creates a compact 5x5x5 voxel
-sphere near the origin and uses the `world_<element>_sphere_5x5x5.bin` naming
-convention by default, with an optional output filename in that directory.
+outputs live in `src/worlds/`; `gen_world` defaults to a radius-2 sphere in a
+5x5x5 world, named `world_<element>_sphere_5x5x5.bin`, with an optional output
+filename. JSON scenes provide custom dimensions, radii, centers, multiple
+spheres, and world-edge clipping.
 
 Partition phase 0/1 refers to origins in padded coordinates. Every visible cell
 belongs to a complete tile in both phases, for positive even or odd dimensions.
@@ -292,13 +302,24 @@ exactly 30 and 60 ticks/s before scheduler delay and timing granularity.
 waitForTick currently synchronizes the dedicated simulation CUDA stream used by
 updateWorld and checks asynchronous errors. It is not a device-wide wait,
 but blocking-stream dependencies can still couple it to other work.
-Main serializes simulation and rendering with a frame-ready/frame-rendered
-handoff. A separate CPU thread alone
-does not establish GPU independence or pin that thread to a CPU core.
+Main holds `world_mutex` across updateWorld, waitForTick, and swapBuffers.
+The renderer takes the same mutex before calling stateToWorldLaunch and holds
+it until the function returns. The nonempty path synchronizes render_stream
+after creating entities; the empty path has already synchronized the visibility
+scan. Thus both paths finish GPU reads before unlocking. Holding a mutex only
+around kernel submission or a device_view copy would leave GPU reads exposed
+to later writes to either world buffer.
+
+Projection, clipping, rasterization, window presentation, and timing sleeps
+run outside this lock. World and render loops have independent rates; a frame
+can repeat a world version or skip intermediate versions. No condition-variable
+frame handoff is used. Any future editor must take the same world mutex and
+finish its GPU writes before releasing it. A separate CPU thread alone does
+not establish GPU independence or pin that thread to a CPU core.
 
 Main starts the world, render, and input threads. Its world/render loops treat
 nonpositive configured tick rates as disabled. With world ticking disabled,
-the renderer also waits because no frame-ready signal is sent. Default padded
+the renderer can continue taking snapshots of the unchanged world. Default padded
 state upload, material LUT calls, post-wait swapBuffers, and explicit scene
 loading are implemented. A future cross-thread tick-rate setter needs atomic
 or locked access; the current defaults are compile-time constants.
@@ -555,17 +576,15 @@ be honored.
 | Shared GPU resource with fences or map/unmap | Attractive for a GPU renderer; requires a supported graphics API/platform handoff |
 | Changed-tile patches to a render copy | Later optimization; needs version tracking, cumulative changes across skipped frames, and a full-resync path |
 
-For the existing CPU renderer, use an explicit completed host snapshot as the
-initial bridge, possibly at a lower render rate. Once the copy finishes, the GPU
-can continue while the CPU renders that immutable snapshot, provided snapshot
-storage is not overwritten while in use. Full simulation/render serialization
-is an even simpler first milestone.
-
-For a future GPU renderer, keep the world/render representation on device and
-share or derive graphics resources there. If the team intends a custom CUDA
-renderer, update and render kernels can initially run in one stream; presentation
-of the resulting image is still a separate handoff. OpenGL interop is only an
-option, not the current renderer. Verify WSL/platform support before choosing it.
+The current custom CUDA renderer derives its snapshot on the device while the
+shared world mutex is held. Each entity stores its cell and coordinates by
+value; later render stages do not access the live world. This establishes a
+reader lifetime ending at stateToWorldLaunch completion, without serializing
+the ticker against the entire render pipeline. CUDA allocation and default-stream
+dependencies may still limit overlap; no performance benefit is assumed.
+An explicit host snapshot remains an alternative for a CPU renderer. OpenGL
+interop is another option, not the current renderer; verify platform support
+before choosing it.
 
 Simulation double buffering alone does not guarantee renderer safety:
 if rendering still reads B, the simulation may read B while writing A, but
@@ -582,6 +601,10 @@ also becomes the place to invalidate active tiles or render regions later.
 No interactive edit implementation is needed for alpha.
 
 ## Open questions
+
+Deferred renderer crash investigations (separate from world snapshot locking):
+- worldToClipLaunch and clipVertsLaunch ignore cudaDeviceSynchronize return
+  values. Check these errors as a separate diagnostic step.
 
 Before the first integrated simulation:
 - Which initial scenes and material rules best reveal whether face movement is

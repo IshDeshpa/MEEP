@@ -15,7 +15,10 @@ constexpr float WORLD_TICK_RATE = 10.0F;
 constexpr float RENDER_TICK_RATE = 60.0F;
 constexpr float INPUT_TICK_RATE = 60.0F;
 constexpr double PLAYER_SPEED = 0.25;
-#ifdef MEEP_XPRA_MOUSE
+#if defined(MEEP_WSL_MOUSE) && defined(MEEP_XPRA_MOUSE)
+#error "Select only one mouse workaround: MEEP_WSL_MOUSE or MEEP_XPRA_MOUSE"
+#endif
+#if defined(MEEP_WSL_MOUSE) || defined(MEEP_XPRA_MOUSE)
 constexpr double MOUSE_SENSITIVITY = 0.002;
 #else
 constexpr double MOUSE_SENSITIVITY = 0.00001;

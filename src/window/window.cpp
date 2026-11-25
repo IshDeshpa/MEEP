@@ -127,6 +127,13 @@ GameWindow::GameWindow(){
   mask.mask = mask_bytes;
 
   XISelectEvents(this->d, DefaultRootWindow(d), &mask, 1);
+#ifdef MEEP_WSL_MOUSE
+  unsigned char device_mask_bytes[XIMaskLen(XI_HierarchyChanged)] = {};
+  XISetMask(device_mask_bytes, XI_DeviceChanged);
+  XISetMask(device_mask_bytes, XI_HierarchyChanged);
+  XIEventMask device_mask{XIAllDevices, sizeof(device_mask_bytes), device_mask_bytes};
+  XISelectEvents(d, DefaultRootWindow(d), &device_mask, 1);
+#endif
   XFlush(this->d);
 
   // block until the window is mapped
@@ -156,10 +163,20 @@ bool GameWindow::grabInput(){
     return false;
   }
 
+#ifdef MEEP_WSL_MOUSE
+  wsl_pointer_sources.clear();
+#endif
   return true;
 }
 
 void GameWindow::releaseInput(){
+#ifdef MEEP_WSL_MOUSE
+  wsl_pointer_sources.clear();
+  {
+    std::lock_guard lock(mouse_move_mutex);
+    pending_mouse_move = {0, 0};
+  }
+#endif
   {
     std::lock_guard lock(pressed_keys_mutex);
     held_keys.reset();
@@ -195,9 +212,13 @@ std::bitset<256> GameWindow::pressedKeys(){
   return held_keys;
 }
 
+#ifdef MEEP_WSL_MOUSE
+std::pair<double, double> GameWindow::consumeMouseMove(){
+#else
 std::pair<int, int> GameWindow::consumeMouseMove(){
+#endif
   std::lock_guard lock(mouse_move_mutex);
-  return std::exchange(pending_mouse_move, std::pair{0, 0});
+  return std::exchange(pending_mouse_move, {});
 }
 
 std::pair<bool, bool> GameWindow::consumeMouseClicks(){
@@ -205,6 +226,36 @@ std::pair<bool, bool> GameWindow::consumeMouseClicks(){
   return {std::exchange(pending_left_click, false),
           std::exchange(pending_right_click, false)};
 }
+
+#ifdef MEEP_WSL_MOUSE
+void GameWindow::handleWslMouseMotion(const XIRawEvent &motion) {
+  auto [source_it, inserted] = wsl_pointer_sources.try_emplace(motion.sourceid);
+  auto &source = source_it->second;
+  if (inserted) {
+    int count = 0;
+    XIDeviceInfo *device = XIQueryDevice(d, motion.sourceid, &count);
+    if (device && count > 0) {
+      for (int i = 0; i < device[0].num_classes; ++i) {
+        if (device[0].classes[i]->type != XIValuatorClass) continue;
+        const auto *valuator =
+            reinterpret_cast<const XIValuatorClassInfo *>(device[0].classes[i]);
+        if (valuator->number < 0 || valuator->number > 1) continue;
+        auto &axis = source.axes[valuator->number];
+        axis.absolute = valuator->mode == XIModeAbsolute;
+        if (axis.absolute && valuator->max > valuator->min) {
+          const int extent = valuator->number == 0 ? DisplayWidth(d, s) : DisplayHeight(d, s);
+          axis.scale = (extent - 1.0) / (valuator->max - valuator->min);
+        }
+      }
+    }
+    if (device) XIFreeDeviceInfo(device);
+  }
+  const auto [dx, dy] = source.readMotion(motion.valuators, motion.raw_values);
+  std::lock_guard lock(mouse_move_mutex);
+  pending_mouse_move.first += dx;
+  pending_mouse_move.second += dy;
+}
+#endif
 
 void GameWindow::join(){
   XEvent e;
@@ -228,10 +279,20 @@ void GameWindow::join(){
         e.xcookie.extension == xi_opcode &&
         XGetEventData(d, &e.xcookie)) {
 
+#ifdef MEEP_WSL_MOUSE
+      if (e.xcookie.evtype == XI_DeviceChanged ||
+          e.xcookie.evtype == XI_HierarchyChanged) {
+        wsl_pointer_sources.clear();
+      }
+#endif
+
       if (e.xcookie.evtype == XI_RawMotion && focused) {
         const auto* motion =
             static_cast<const XIRawEvent*>(e.xcookie.data);
 
+#ifdef MEEP_WSL_MOUSE
+        handleWslMouseMotion(*motion);
+#else
 #ifdef MEEP_XPRA_MOUSE
         auto [source_it, inserted] = pointer_sources.try_emplace(motion->sourceid);
         auto &source = source_it->second;
@@ -290,6 +351,7 @@ void GameWindow::join(){
         std::lock_guard lock(mouse_move_mutex);
         pending_mouse_move.first += dx;
         pending_mouse_move.second += dy;
+#endif
       }
 
       XFreeEventData(d, &e.xcookie);

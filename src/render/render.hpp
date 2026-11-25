@@ -16,6 +16,7 @@ public:
   cudaStream_t render_stream;
 
   std::unique_ptr<DeviceBuffer<CellRenderEntity>> entities;
+  std::unique_ptr<DeviceBuffer<bool>> tri_masks;
 
   std::unique_ptr<DeviceBuffer<Vertex>> verts;
   std::unique_ptr<DeviceBuffer<Tri>> tris;
@@ -34,9 +35,11 @@ private:
 };
 
 // 1. State -> world-space vertices, triangles, and colors
+// Caller must exclude world edits/buffer swaps for this entire call. All GPU
+// reads of ws finish before return, including the no-visible-entities path.
 bool stateToWorldLaunch(WorldState &ws);
 MEEP_GLOBAL void isVisible(DeviceWorldView dwv, uint8_t *is_visible);
-MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz);
+MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz, bool *tri_masks);
 
 // 2. World -> clip space 
 void worldToClipLaunch();

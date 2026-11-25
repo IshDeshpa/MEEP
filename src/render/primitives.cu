@@ -9,21 +9,19 @@
 #endif
 
 __host__ __device__ DeviceEntity::DeviceEntity(const DeviceGeometryData *dgd,
-                                            Color c, glm::dmat4 t)
-    : DeviceEntityData{dgd, nullptr, c, t} {
+                                            Color c, glm::dmat4 t, bool *tri_mask)
+    : DeviceEntityData{dgd, tri_mask, c, t} {
 #if defined(__CUDA_ARCH__)
-  triMask = new bool[geom->triangleCount];
   for (std::size_t i = 0; i < geom->triangleCount; ++i) triMask[i] = false;
 #else
-  CUDA_CHECK(cudaMalloc(reinterpret_cast<void **>(&triMask), geom->triangleCount * sizeof(bool)));
   CUDA_CHECK(cudaMemset(triMask, 0, geom->triangleCount * sizeof(bool)));
 #endif
 }
 
 __host__ __device__ DeviceEntity::DeviceEntity(const DeviceGeometryData *dgd,
                                             Color c, worldcoord coords,
-                                            glm::dvec3 rot_euler)
-    : DeviceEntity(dgd, c, toTransform(coords, rot_euler)) {}
+                                            glm::dvec3 rot_euler, bool *tri_mask)
+    : DeviceEntity(dgd, c, toTransform(coords, rot_euler), tri_mask) {}
 
 __host__ __device__ const glm::dmat4 DeviceEntity::toTransform(
     glm::dvec3 translation, glm::dvec3 rot_euler) {

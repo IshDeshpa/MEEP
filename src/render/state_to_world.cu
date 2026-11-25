@@ -58,11 +58,14 @@ bool stateToWorldLaunch(WorldState &ws){
 
   if(num_refs == 0){
     r.entities.reset();
+    r.tri_masks.reset();
     return false;
   }
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
-  createRefsEntities<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);
+  r.tri_masks = std::make_unique<DeviceBuffer<bool>>(
+      static_cast<std::size_t>(num_refs) * r.device_cube->triangleCount);
+  createRefsEntities<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size, r.tri_masks->data());
 
   CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaStreamSynchronize(r.render_stream));
@@ -94,7 +97,7 @@ __global__ void isVisible(DeviceWorldView dwv, uint8_t *face_bitmasks){
 }
 
 // Create render cell references & entities (basically; a copy of all cells we may need to render)
-__global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitmasks, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz){
+__global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitmasks, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz, bool *tri_masks){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= world_sz) return;
 
@@ -107,7 +110,8 @@ __global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitm
   *cre = CellRenderEntity(
     cell, c,
     &DEVICE_CUBE,
-    ELEMENT_COLOR_LUT[cell.elem]
+    ELEMENT_COLOR_LUT[cell.elem],
+    tri_masks + static_cast<std::size_t>(offsets[ind]) * DEVICE_CUBE.triangleCount
   );
   cre->setFaceMask(face_bitmasks[ind]); // save the exposed and non-exposed faces for later steps
 }

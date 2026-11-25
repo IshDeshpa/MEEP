@@ -1,12 +1,15 @@
 #pragma once
 
 #include "render/camera.hpp"
+#ifdef MEEP_WSL_MOUSE
+#include "window/pointer_motion.hpp"
+#endif
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <bitset>
 #include <mutex>
-#ifdef MEEP_XPRA_MOUSE
+#if defined(MEEP_WSL_MOUSE) || defined(MEEP_XPRA_MOUSE)
 #include <unordered_map>
 #endif
 #include <unordered_set>
@@ -43,7 +46,11 @@ public:
   void updateScreen(HostScreen &s);
 
   // Returns the accumulated movement since the previous call, or {0, 0} if none.
+#ifdef MEEP_WSL_MOUSE
+  std::pair<double, double> consumeMouseMove();
+#else
   std::pair<int, int> consumeMouseMove();
+#endif
 
   // Returns {left_clicked, right_clicked} since the previous call.
   std::pair<bool, bool> consumeMouseClicks();
@@ -54,6 +61,9 @@ private:
 
   bool grabInput();
   void releaseInput();
+#ifdef MEEP_WSL_MOUSE
+  void handleWslMouseMotion(const XIRawEvent &motion);
+#endif
 
   Display *d;
   XVisualInfo *vi;
@@ -66,6 +76,9 @@ private:
 
   int xi_opcode;
   bool detectable_repeat = false;
+#ifdef MEEP_WSL_MOUSE
+  std::unordered_map<int, PointerMotion> wsl_pointer_sources;
+#endif
 #ifdef MEEP_XPRA_MOUSE
   struct PointerSource {
     bool absolute_synthetic = false;
@@ -77,7 +90,11 @@ private:
 
   bool focused;
   std::mutex mouse_move_mutex;
+#ifdef MEEP_WSL_MOUSE
+  std::pair<double, double> pending_mouse_move{0, 0};
+#else
   std::pair<int, int> pending_mouse_move{0, 0};
+#endif
   std::mutex pressed_keys_mutex;
   std::bitset<256> held_keys;
   std::mutex mouse_click_mutex;

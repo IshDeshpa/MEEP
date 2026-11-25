@@ -315,8 +315,7 @@ void WorldState::updateWorld(std::size_t tick, LUT& lut) {
 }
 
 void WorldState::waitForTick() {
-    // Launches currently use the default stream. Move both launch and wait
-    // to a dedicated simulation stream before overlapping GPU rendering.
+    // Complete this world's update before buffer swaps or renderer access.
     CUDA_CHECK(cudaStreamSynchronize(world_tick_stream));
 }
 

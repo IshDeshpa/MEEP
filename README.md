@@ -28,6 +28,10 @@ Face types, packing helpers, binary LUT loading, and device lookup live in
 `src/state/lut.hpp/cu`. World ticks use the LUT; `worldTick` waits for completion
 and calls `swapBuffers`. Main constructs a blank world, loads a LUT, and starts the
 tick/render threads. See the [architecture model](docs/architecture.md).
+World updates (including GPU completion and buffer swaps) and
+`stateToWorldLaunch` share a mutex. The renderer releases it after the entity
+snapshot is complete; projection, clipping, rasterization, display, and tick
+pacing run outside the world lock.
 
 From `src/`, `make run` constructs a 100x100x100 blank AIR world with a BLOCK
 shell. Use `make run ARGS="-n 20 -m 10 -k 30"` to change blank dimensions, or
@@ -38,7 +42,7 @@ The `gen_world` tool writes there regardless of the working directory, using
 descriptive filenames such as `world_water_sphere_5x5x5.bin`:
 `make gen_world ARGS=water` (an optional output filename is accepted).
 
-For multiple spheres, create a JSON file such as:
+For custom dimensions, sphere radii, centers, or multiple spheres, use JSON:
 
 ```json
 {
@@ -66,6 +70,30 @@ compatible table without rebuilding, for example
 also defaults to alpha using its absolute source-tree path. The old `src/lut.bin`
 is unused unless explicitly selected at runtime.
 
+Click the window to capture input; Escape releases it. Default mouse behavior
+retains the original input conversion and pitch rule, with sensitivity
+`0.00001` for normal builds and `0.002` for `XPRA_MOUSE=1` builds. Xpra users
+can keep using `make -C src run XPRA_MOUSE=1`.
+
+WSL's absolute pointer workaround is selected at compile time:
+`make -C src run WSL_MOUSE=1 ARGS="--world worlds/world_lava_sphere_5x5x5.bin"`.
+This defines `MEEP_WSL_MOUSE`; only this build converts absolute positions to
+signed pixel deltas, preserves fractional movement, resets position baselines
+on capture changes, and clamps
+pitch before a flip. It defaults to sensitivity `0.002`.
+Use `--mouse-sensitivity VALUE` to override the build's sensitivity without
+rebuilding; `0` disables mouse look. Defaults live in `src/config.hpp`.
+`make -C src test-mouse` checks sensitivity defaults; add `XPRA_MOUSE=1` to
+check Xpra defaults or `WSL_MOUSE=1` to also check WSL input conversion without
+CUDA hardware or an X display. `WSL_MOUSE` and `XPRA_MOUSE` are mutually
+exclusive and default to `0`.
+Changing either option rebuilds affected objects automatically.
+
+Run `make` without `-j` for serial builds in a small WSL instance. Editing
+`config.hpp` rebuilds most CUDA files, and bare `-j` launches unlimited compiler
+jobs. Direct `./main` runs the existing binary and cannot pick up
+compile-time setting changes until a build succeeds.
+
 Debug levels are selected with `make DEBUG=<level>` (also works with `run`):
 
 | Level | Defined flags | Behavior | Objects |
@@ -87,6 +115,11 @@ padding, state bits, output coverage, LUT upload, and buffer parity using
 `updateWorld`, `waitForTick`, and `swapBuffers`. Supply another LUT with
 `ARGS=/absolute/path/to/rules.bin`. Set `CUDA_HOME` for a nonstandard toolkit.
 The older `world_padding` test still needs its call sites adapted to the LUT API.
+
+`make run-render_mask_lifetime` checks triangle-mask storage across 1,024
+radius-5 water-sphere snapshots, eight full CUDA render passes, and an empty
+snapshot. It verifies mask pointers and visibility against a CPU reference.
+Like other application builds, add `WSL_MOUSE=1` for the WSL build configuration.
 
 ## CUDA experiment
 

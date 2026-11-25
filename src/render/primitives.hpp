@@ -136,7 +136,7 @@ private:
 
 struct DeviceEntityData {
   const DeviceGeometryData *geom; // geometry data for this entity
-  bool *triMask; // same size as geom.triangleCount, represents which triangles to show and which to hide
+  bool *triMask; // non-owning slice of caller-provided GPU storage, geom.triangleCount entries
   Color color;
   glm::dmat4x4 transform;
 };
@@ -151,10 +151,10 @@ public:
   DeviceEntity() : DeviceEntityData{} {}
 
   MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
-                                glm::dmat4 t);
+                                glm::dmat4 t, bool *tri_mask);
 
   MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
-                                worldcoord coords, glm::dvec3 rot_euler);
+                                worldcoord coords, glm::dvec3 rot_euler, bool *tri_mask);
 
   MEEP_HOST_DEVICE const static glm::dmat4 toTransform(glm::dvec3 translation,
                                           glm::dvec3 rot_euler);

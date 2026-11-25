@@ -5,6 +5,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/rotate_vector.hpp>
 #include <glm/matrix.hpp>
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <mutex>
@@ -99,18 +100,22 @@ public:
     if (length > 1e-12) pos += UP * distance;
   }
 
-  void rotateLookDir(int dx, int dy) {
+  void rotateLookDir(double dx, double dy, double mouse_sensitivity) {
     std::lock_guard lock(pose_mutex);
     glm::dvec3 forward = glm::normalize(look_dir);
-    forward = glm::rotate(forward, -dx * MOUSE_SENSITIVITY, UP);
-
+    forward = glm::rotate(forward, -dx * mouse_sensitivity, UP);
     const glm::dvec3 right = glm::normalize(glm::cross(forward, UP));
+#ifdef MEEP_WSL_MOUSE
+    const double pitch = std::asin(std::clamp(glm::dot(forward, UP), -1.0, 1.0));
+    const double pitch_limit = std::asin(0.99);
+    const double next_pitch =
+        std::clamp(pitch - dy * mouse_sensitivity, -pitch_limit, pitch_limit);
+    forward = glm::normalize(glm::rotate(forward, next_pitch - pitch, right));
+#else
     const glm::dvec3 candidate =
-        glm::normalize(glm::rotate(forward, -dy * MOUSE_SENSITIVITY, right));
-    if (std::abs(glm::dot(candidate, UP)) < 0.99) {
-      forward = candidate;
-    }
-
+        glm::normalize(glm::rotate(forward, -dy * mouse_sensitivity, right));
+    if (std::abs(glm::dot(candidate, UP)) < 0.99) forward = candidate;
+#endif
     look_dir = forward;
   }
 

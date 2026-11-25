@@ -7,7 +7,7 @@
 
 #include <algorithm>
 #include <charconv>
-#include <condition_variable>
+#include <cmath>
 #include <exception>
 #include <glm/geometric.hpp>
 #include <iostream>
@@ -24,22 +24,18 @@ TickSource input_tick{INPUT_TICK_RATE, "input"};
 std::unique_ptr<WorldState> world;
 std::unique_ptr<LUT> lut;
 
-std::mutex render_sync_mutex;
-std::condition_variable_any render_sync;
-bool frame_ready = false;
-bool frame_rendered = true;
+// Protect world buffers and device_view through completion of GPU access.
+std::mutex world_mutex;
 
-void inputUpdate(GameWindow& window, Camera& camera){
+void inputUpdate(GameWindow& window, Camera& camera, double mouse_sensitivity){
   std::bitset<256> keys = window.pressedKeys();
-  std::pair<int, int> dx_dy = window.consumeMouseMove(); 
-  int &dx = dx_dy.first; 
-  int &dy = dx_dy.second;
+  const auto [dx, dy] = window.consumeMouseMove();
   std::pair<bool, bool> left_right = window.consumeMouseClicks(); 
   [[maybe_unused]] bool &left = left_right.first; 
   [[maybe_unused]] bool &right = left_right.second;
 
   // move look
-  camera.rotateLookDir(dx, dy);
+  camera.rotateLookDir(dx, dy, mouse_sensitivity);
   
   // move pos
   if(window.isPressed('w', keys)){
@@ -65,10 +61,11 @@ void inputUpdate(GameWindow& window, Camera& camera){
   }
 }
 
-void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera) {
+void inputTick(std::stop_token stop_token, GameWindow& window, Camera& camera,
+               double mouse_sensitivity) {
   while (!stop_token.stop_requested()) {
     const time_point start = Clock::now();
-    inputUpdate(window, camera);
+    inputUpdate(window, camera, mouse_sensitivity);
     input_tick.incAndWait(start);
   }
 }
@@ -81,22 +78,14 @@ void worldTick(std::stop_token stop_token) {
     }
     time_point start = Clock::now();
 
-    world->updateWorld(world_tick.counter, *lut);
-    world->waitForTick();
-    world->swapBuffers();
+    {
+      std::lock_guard lock(world_mutex);
+      world->updateWorld(world_tick.counter, *lut);
+      world->waitForTick();
+      world->swapBuffers();
+    }
 
     world_tick.incAndWait(start);
-    {
-      std::lock_guard lock(render_sync_mutex);
-      frame_ready = true;
-      frame_rendered = false;
-    }
-    render_sync.notify_one();
-
-    std::unique_lock lock(render_sync_mutex);
-    if (!render_sync.wait(lock, stop_token, [] { return frame_rendered; })) {
-      return;
-    }
   }
 }
 
@@ -112,15 +101,16 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
         continue;
       }
 
-      // std::unique_lock lock(render_sync_mutex);
-      // if (!render_sync.wait(lock, stop_token, [] { return frame_ready; })) {
-      //   return;
-      // }
-      // lock.unlock();
-
       time_point start = Clock::now();
 
-      if (stateToWorldLaunch(*world)) {
+      bool has_entities;
+      {
+        std::lock_guard lock(world_mutex);
+        // This call waits for all world reads on render_stream before returning.
+        has_entities = stateToWorldLaunch(*world);
+      }
+
+      if (has_entities) {
         worldToClipLaunch();
         clipVertsLaunch();
         clipToNDCLaunch();
@@ -138,13 +128,6 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
 #endif
 
       render_tick.incAndWait(start);
-
-      {
-        std::lock_guard done_lock(render_sync_mutex);
-        frame_ready = false;
-        frame_rendered = true;
-      }
-      render_sync.notify_one();
     }
 }
 
@@ -152,19 +135,45 @@ int main(int argc, char* argv[]){
   size_t n = 100, m = 100, k = 100;
   const char* world_path = nullptr;
   const char* lut_path = ALPHA_LUT_PATH;
+  double mouse_sensitivity = MOUSE_SENSITIVITY;
   bool dimensions_given = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string_view option = argv[i];
     if (option == "--help" || option == "-h") {
       std::cout << "Usage: " << argv[0]
-                << " [--lut FILE] ([-n N] [-m M] [-k K] | --world FILE)\n"
+                << " [--lut FILE] [--mouse-sensitivity VALUE] ([-n N] [-m M] [-k K] | --world FILE)\n"
                 << "Default world: blank AIR interior, 100x100x100.\n"
                 << "Dimensions apply to constructed worlds; --world uses the file dimensions.\n"
                 << "Default LUT: " << ALPHA_LUT_PATH << '\n'
+#ifdef MEEP_WSL_MOUSE
+                << "Mouse input: WSL workaround (MEEP_WSL_MOUSE).\n"
+#elif defined(MEEP_XPRA_MOUSE)
+                << "Mouse input: Xpra workaround (MEEP_XPRA_MOUSE).\n"
+#else
+                << "Mouse input: original behavior.\n"
+#endif
+                << "Mouse sensitivity: radians per input unit (default " << MOUSE_SENSITIVITY
+                << "; --mouse-sensitivity overrides this; 0 disables mouse look).\n"
                 << "Aliases: -x for -n, -y for -m, -z for -k.\n"
                 << "Storage adds one BLOCK cell on each side (+2 per dimension).\n";
       return 0;
+    }
+
+    if (option == "--mouse-sensitivity") {
+      if (++i == argc) {
+        std::cerr << "Missing value for " << option << '\n';
+        return 1;
+      }
+      const std::string_view value = argv[i];
+      const auto result = std::from_chars(value.data(), value.data() + value.size(), mouse_sensitivity);
+      if (result.ec != std::errc{} || result.ptr != value.data() + value.size() ||
+          !std::isfinite(mouse_sensitivity) || mouse_sensitivity < 0.0) {
+        std::cerr << "Invalid mouse sensitivity: " << value
+                  << " (expected a finite nonnegative number)\n";
+        return 1;
+      }
+      continue;
     }
 
     if (option == "--world" || option == "--lut") {
@@ -244,7 +253,7 @@ int main(int argc, char* argv[]){
       renderTick(stop_token, window, renderer, camera);
     }};
     std::jthread t3{[&](std::stop_token stop_token) {
-      inputTick(stop_token, window, camera);
+      inputTick(stop_token, window, camera, mouse_sensitivity);
     }};
 
     // diagnostic thread; put whatever prints in here

@@ -18,8 +18,15 @@ DEBUG_FLAGS_2 := $(DEBUG_FLAGS_1) MEEP_DEBUG_RENDER_TRACE
 
 DEBUG    ?= 0
 XPRA_MOUSE ?= 0
+WSL_MOUSE ?= 0
 ifeq ($(filter $(XPRA_MOUSE),0 1),)
 $(error XPRA_MOUSE must be 0 or 1)
+endif
+ifeq ($(filter $(WSL_MOUSE),0 1),)
+$(error WSL_MOUSE must be 0 or 1)
+endif
+ifeq ($(WSL_MOUSE)$(XPRA_MOUSE),11)
+$(error WSL_MOUSE and XPRA_MOUSE cannot both be 1)
 endif
 DEBUG_LEVELS := $(sort $(patsubst DEBUG_FLAGS_%,%,$(filter DEBUG_FLAGS_%,$(.VARIABLES))))
 ifeq ($(filter $(DEBUG),$(DEBUG_LEVELS)),)
@@ -32,6 +39,9 @@ DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
 DEFINES += $(addprefix -D,$(addsuffix =1,$(DEBUG_FLAGS)))
 ifeq ($(XPRA_MOUSE),1)
 DEFINES += -DMEEP_XPRA_MOUSE=1
+endif
+ifeq ($(WSL_MOUSE),1)
+DEFINES += -DMEEP_WSL_MOUSE=1
 endif
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
@@ -177,7 +187,7 @@ $(TARGET): $(OBJS) build/main.mode | $(ALPHA_LUT)
 
 build/main.mode: force-main-mode
 	@mkdir -p $(dir $@)
-	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS)' > $@.tmp
+	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS) XPRA_MOUSE=$(XPRA_MOUSE) WSL_MOUSE=$(WSL_MOUSE)' > $@.tmp
 	@cmp -s $@.tmp $@ || mv $@.tmp $@
 	@rm -f $@.tmp
 
@@ -199,6 +209,14 @@ alpha-lut: $(ALPHA_LUT)
 # World generation is a standalone Python tool and does not require CUDA.
 gen_world:
 	$(PYTHON) tests/gen_world.py $(ARGS)
+
+# Input conversion/default checks require neither CUDA nor an X display.
+test-mouse: $(OBJ_DIR)/host-tests/mouse_input_test
+	./$(OBJ_DIR)/host-tests/mouse_input_test
+
+$(OBJ_DIR)/host-tests/mouse_input_test: tests/mouse_input_test.cpp window/pointer_motion.hpp config.hpp $(OBJ_DIR)/debug.flags
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -o $@ $<
 
 $(ALPHA_LUT): state/lut_gen_alpha.py
 	@mkdir -p $(dir $@)
@@ -253,6 +271,7 @@ help:
 	@echo "  lut                 generate/update the alpha LUT"
 	@echo "  alpha-lut           generate/update $(ALPHA_LUT) from the alpha rules (no CUDA needed)"
 	@echo "  gen_world           generate a world with ARGS='ELEMENT [OUTPUT]' or '--json INPUT [OUTPUT]'"
+	@echo "  test-mouse          run host mouse input/default checks (no CUDA or display needed)"
 	@echo "  <test-name>         build tests/<test-name>.cpp into $(OBJ_DIR)/$(TEST_DIR)/<test-name>"
 	@echo "  run-<test-name>     build and run that test"
 	@echo "  RUNNER=valgrind     run any run* target under Valgrind Memcheck"
@@ -277,6 +296,7 @@ help:
 	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
 	@echo "  XPRA_MOUSE=$(XPRA_MOUSE)       convert Xpra XTEST pointer positions to deltas (0 or 1)"
+	@echo "  WSL_MOUSE=$(WSL_MOUSE)        enable the WSL absolute-pointer workaround (0 or 1; exclusive with XPRA_MOUSE)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"
@@ -301,4 +321,4 @@ clean:
 # Preserve compiled intermediates, but let missing runtime data be regenerated.
 .SECONDARY: $(OBJS) $(TEST_CPP_OBJS) $(TEST_CU_OBJS) $(TEST_CPP_TARGETS) $(TEST_CU_TARGETS)
 
-.PHONY: all run lut alpha-lut gen_world force-main-mode $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean
+.PHONY: all run lut alpha-lut gen_world test-mouse force-main-mode $(TEST_NAMES) $(TEST_NAMES:%=run-%) format $(FORMAT_TARGETS) help clean

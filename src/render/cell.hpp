@@ -69,10 +69,10 @@ public:
   // Placeholder for containers that default-construct; overwritten by a copy from the GPU
   CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, worldcoord(0)) {}
 
-  // DeviceEntity's constructor already allocates triMask
-  MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color): DeviceEntity(dcd, color, coord, glm::dvec3(0.0)), cell_ref(CellRef(c, coord)) {}
+  // The renderer owns tri_mask; entities borrow one triangle-count-sized slice.
+  MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color, bool *tri_mask): DeviceEntity(dcd, color, coord, glm::dvec3(0.0), tri_mask), cell_ref(CellRef(c, coord)) {}
 
-  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color): CellRenderEntity(cr.cell, cr.coords, dcd, color) {}
+  MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color, bool *tri_mask): CellRenderEntity(cr.cell, cr.coords, dcd, color, tri_mask) {}
 
   // Device only: sets triMask so that the triangles of each face are shown when that face's bit is set.
   // Bit i of face_bits is the Direction with value i (X_PLUS = bit 0, ..., Z_MINUS = bit 5).
