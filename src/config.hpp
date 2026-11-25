@@ -11,17 +11,20 @@ constexpr float CAMERA_FOV_DEG = 60.0F;
 constexpr int SCREEN_WIDTH = 800;
 constexpr int SCREEN_HEIGHT = 600;
 
-constexpr float WORLD_TICK_RATE = 10.0F;
+constexpr float WORLD_TICK_RATE = 0.0F;
 constexpr float RENDER_TICK_RATE = 60.0F;
-constexpr float INPUT_TICK_RATE = 60.0F;
+constexpr float INPUT_TICK_RATE = 10.0F;
 constexpr double PLAYER_SPEED = 0.25;
+
 // 0: X11 relative input; 1: WSL absolute-pointer workaround; 2: Xpra.
 #ifndef MEEP_MOUSE_MODE
 #define MEEP_MOUSE_MODE 0
 #endif
+
 #if MEEP_MOUSE_MODE < 0 || MEEP_MOUSE_MODE > 2
 #error "MEEP_MOUSE_MODE must be 0 (X11), 1 (WSL), or 2 (Xpra)"
 #endif
+
 #if MEEP_MOUSE_MODE != 0
 constexpr double MOUSE_SENSITIVITY = 0.002;
 #else

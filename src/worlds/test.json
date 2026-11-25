@@ -1,6 +1,21 @@
 {
-  "dimensions": [30, 20, 30],
+  "dimensions": [81, 21, 81],
   "spheres": [
-    {"center": [8, 4, 8], "element": "water", "radius": 3}
+    {"center": [10, 10, 10], "element": "air", "radius": 1.0},
+    {"center": [30, 10, 10], "element": "water", "radius": 1.5},
+    {"center": [50, 10, 10], "element": "earth", "radius": 2.0},
+    {"center": [70, 10, 10], "element": "lava", "radius": 2.5},
+    {"center": [10, 10, 30], "element": "nature", "radius": 3.0},
+    {"center": [30, 10, 30], "element": "steam", "radius": 3.5},
+    {"center": [50, 10, 30], "element": "fire", "radius": 4.0},
+    {"center": [70, 10, 30], "element": "acid", "radius": 4.5},
+    {"center": [10, 10, 50], "element": "ice", "radius": 5.0},
+    {"center": [30, 10, 50], "element": "hotair", "radius": 5.5},
+    {"center": [50, 10, 50], "element": "explosion", "radius": 6.0},
+    {"center": [70, 10, 50], "element": "sand", "radius": 6.5},
+    {"center": [10, 10, 70], "element": "bomb", "radius": 7.0},
+    {"center": [30, 10, 70], "element": "block", "radius": 7.5},
+    {"center": [50, 10, 70], "element": "emitter", "radius": 8.0},
+    {"center": [70, 10, 70], "element": "void", "radius": 8.5}
   ]
 }

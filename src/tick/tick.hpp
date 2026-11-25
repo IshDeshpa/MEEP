@@ -34,7 +34,7 @@ inline constexpr TickRate UNLIMITED = 0.0F;
 class TickSource {
 public:
   explicit TickSource(TickRate ticks_per_second) : ticks_per_second(ticks_per_second) {}
-  explicit TickSource(TickRate ticks_per_second, std::string name) : ticks_per_second(ticks_per_second), name(name) {}
+  explicit TickSource(TickRate ticks_per_second, std::string name) : name(name), ticks_per_second(ticks_per_second) {}
 
   void incAndWait(Clock::time_point start) {
     counter++;
