@@ -3,10 +3,13 @@
 #include <cstddef>
 #include <chrono>
 #include <thread>
+#include <string>
+#include <cstdio>
 
 #ifdef MEEP_DEBUG
 #include <algorithm>
 #include <iterator>
+#include <mutex>
 #endif
 
 using namespace std::chrono;
@@ -46,25 +49,38 @@ public:
                   std::chrono::duration<double>(now - (start + period)).count());
       }
     }
+#ifdef MEEP_DEBUG
+    {
+      std::lock_guard lock(history_mutex);
+      recent_tick_times[history_count % TICK_HIST] = Clock::now() - start;
+      ++history_count;
+    }
+#endif
   }
 
+#ifdef MEEP_DEBUG
+  double averageTPS(size_t interval) {
+    std::lock_guard lock(history_mutex);
+    Clock::duration total = Clock::duration::zero();
+    interval = std::min(interval, std::min(history_count, std::size(recent_tick_times)));
+    if (interval == 0) return 0.0;
+    for (size_t i = 0; i < interval; i++) {
+      total += recent_tick_times[(history_count - 1 - i) % std::size(recent_tick_times)];
+    }
+    const double seconds = std::chrono::duration<double>(total).count();
+    return seconds > 0.0 ? static_cast<double>(interval) / seconds : 0.0;
+  }
+#endif
+
   std::size_t counter = 0;
+  std::string name{"anonymous"};
 
 private:
   TickRate ticks_per_second{TickRates::SIXTY_TPS};
-  std::string name{"anonymous"};
 
 #ifdef MEEP_DEBUG
-  Clock::duration recent_tick_times[TICK_HIST];
-
-  Clock::duration averageTickTime(size_t interval) {
-    Clock::duration total = Clock::duration::zero();
-    interval = std::min(interval, std::min(counter, std::size(recent_tick_times)));
-    if (interval == 0) return total;
-    for (size_t i = 0; i < interval; i++) {
-      total += recent_tick_times[(counter - i) % std::size(recent_tick_times)];
-    }
-    return total / interval;
-  }
+  std::mutex history_mutex;
+  std::size_t history_count = 0;
+  Clock::duration recent_tick_times[TICK_HIST]{};
 #endif
 };

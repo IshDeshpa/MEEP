@@ -134,7 +134,7 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
       window.updateScreen(camera);
 
 #ifdef MEEP_DEBUG
-      camera.writePPM("render_debug.ppm");
+      // camera.writePPM("render_debug.ppm");
 #endif
 
       render_tick.incAndWait(start);
@@ -246,12 +246,37 @@ int main(int argc, char* argv[]){
     std::jthread t3{[&](std::stop_token stop_token) {
       inputTick(stop_token, window, camera);
     }};
+
+    // diagnostic thread; put whatever prints in here
+    #ifdef MEEP_DEBUG
+    std::jthread t4{[&](std::stop_token stop_token){
+      while(!stop_token.stop_requested()){
+        printf("%s %.2f TPS\n", world_tick.name.c_str(), world_tick.averageTPS(10));
+        printf("%s %.2f TPS\n", render_tick.name.c_str(), render_tick.averageTPS(10));
+        printf("%s %.2f TPS\n", input_tick.name.c_str(), input_tick.averageTPS(10));
+        fflush(stdout);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+      }
+    }};
+    #endif
     
     window.join();
   
     t1.request_stop();
     t2.request_stop();
     t3.request_stop();
+
+#ifdef MEEP_DEBUG
+    t4.request_stop();
+#endif
+
+    t1.join();
+    t2.join();
+    t3.join();
+
+#ifdef MEEP_DEBUG
+    t4.join();
+#endif
 
   } catch (const std::exception& error) {
     std::cerr << "Could not create world: " << error.what() << '\n';
