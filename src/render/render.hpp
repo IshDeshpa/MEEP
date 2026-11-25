@@ -21,6 +21,7 @@ public:
   std::unique_ptr<DeviceBuffer<Vertex2D>> verts2d;
 
   std::unique_ptr<DeviceBuffer<Direction>> tri_directions;
+  std::unique_ptr<DeviceBuffer<glm::vec3>> local_pos; 
 
   // Global singleton, built on first use
   static Renderer &instance();

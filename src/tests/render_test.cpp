@@ -19,16 +19,16 @@ int main() {
     world.device_view.writeCell(worldcoord(1, 1, 0), Cell{Element::HOTAIR, 0});
     world.device_view.writeCell(worldcoord(2, 1, 0), Cell{Element::EXPLOSION, 0});
     world.device_view.writeCell(worldcoord(3, 1, 0), Cell{Element::SAND, 0});
-    world.device_view.writeCell(worldcoord(0, 0, 0), Cell{Element::BOMB, 0});
-    world.device_view.writeCell(worldcoord(1, 0, 0), Cell{Element::BLOCK, 0});
-    world.device_view.writeCell(worldcoord(2, 0, 0), Cell{Element::EMITTER, 0});
-    world.device_view.writeCell(worldcoord(3, 0, 0), Cell{Element::VOID, 0});
+    world.device_view.writeCell(worldcoord(0, 0, 1), Cell{Element::BOMB, 0});
+    world.device_view.writeCell(worldcoord(1, 0, 1), Cell{Element::BLOCK, 0});
+    world.device_view.writeCell(worldcoord(2, 0, 1), Cell{Element::EMITTER, 0});
+    world.device_view.writeCell(worldcoord(3, 0, 1), Cell{Element::VOID, 0});
 
     // Update the world s.t. we switch buffers; now curr is next
     world.swapBuffers(); // now device_view is updated, and that's what'll be passed to stateToWorldLaunch
 
     Camera& camera = Camera::instance();
-    const glm::dvec3 pos(1.0, 3.0, 4.5);
+    const glm::dvec3 pos(-3.0, 3.0, 5.0);
     const glm::dvec3 target(1.5, 1.5, 0.0);
     const glm::dvec3 up(0.0, 1.0, 0.0);
 

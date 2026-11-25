@@ -144,7 +144,7 @@ MEEP_GLOBAL void rasterize(const Vertex2D *verts2d, const Vertex *verts, const T
         // For your unit cubes centered on their cell coordinates.
         const glm::vec3 face_center = cube_center + 0.5f * normal;
 
-        const glm::vec3 light_position(0.0f, 0.0f, 0.0f);
+        const glm::vec3 light_position(-4.0f, 10.0f, 4.0f);
         const glm::vec3 toward_light = light_position - face_center;
 
         const float distance_squared = glm::dot(toward_light, toward_light);

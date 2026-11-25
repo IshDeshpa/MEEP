@@ -5,6 +5,7 @@
 #include "state/state.hpp"
 #include "render/camera.hpp"
 #include <glm/fwd.hpp>
+#include <memory>
 
 void worldToClipLaunch(){
   // Transform every vertex in the world by Camera.getVP
@@ -35,6 +36,8 @@ void worldToClipLaunch(){
 
   r.verts = std::make_unique<DeviceBuffer<Vertex>>(num_entities * VERTS_PER_CUBE);
   CUDA_CHECK(cudaMemset(r.verts->data(), 0, r.verts->size() * sizeof(Vertex)));
+
+  r.local_pos = std::make_unique<DeviceBuffer<glm::vec3>>(r.verts->size())
 
   generateTris<<<blocks, threads_per_block>>>(r.entities->data(), r.verts->data(), r.tris->data(), r.tri_directions->data(), num_entities, vp);
   cudaDeviceSynchronize();
