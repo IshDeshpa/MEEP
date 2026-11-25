@@ -81,12 +81,22 @@ public:
 
   void moveForward(double distance) {
     std::lock_guard lock(pose_mutex);
-    pos += glm::normalize(look_dir) * distance;
+    const glm::dvec3 horizontal(look_dir.x, 0.0, look_dir.z);
+    const double length = glm::length(horizontal);
+    if (length > 1e-12) pos += horizontal * (distance / length);
   }
 
   void moveRight(double distance) {
     std::lock_guard lock(pose_mutex);
-    pos += glm::cross(glm::normalize(look_dir), UP) * distance;
+    const glm::dvec3 horizontal(look_dir.x, 0.0, look_dir.z);
+    const double length = glm::length(horizontal);
+    if (length > 1e-12) pos += -glm::cross(horizontal / length, UP) * distance;
+  }
+
+  void moveUp(double distance){
+    std::lock_guard lock(pose_mutex);
+    const double length = glm::length(UP);
+    if (length > 1e-12) pos += UP * distance;
   }
 
   void rotateLookDir(int dx, int dy) {

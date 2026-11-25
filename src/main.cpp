@@ -1,9 +1,11 @@
+#include "config.hpp"
 #include "render/render.hpp"
 #include "state/state.hpp"
 #include "state/lut.hpp"
 #include "tick/tick.hpp"
 #include "window/window.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <condition_variable>
 #include <exception>
@@ -30,7 +32,7 @@ bool frame_rendered = true;
 using Clock = std::chrono::steady_clock;
 
 void inputUpdate(GameWindow& window, Camera& camera){
-  std::bitset<256> keys = window.consumePressedKeys(); 
+  std::bitset<256> keys = window.pressedKeys();
   std::pair<int, int> dx_dy = window.consumeMouseMove(); 
   int &dx = dx_dy.first; 
   int &dy = dx_dy.second;
@@ -57,6 +59,13 @@ void inputUpdate(GameWindow& window, Camera& camera){
   if(window.isPressed('d', keys)){
     camera.moveRight(-PLAYER_SPEED);
   }
+
+  if(window.isPressed(' ', keys, true)){ // shift-space will go down
+    camera.moveUp(-PLAYER_SPEED);
+  } else if(window.isPressed(' ', keys)){
+    camera.moveUp(PLAYER_SPEED);
+  }
+
 
 #ifdef MEEP_DEBUG
     std::printf("Pos: %0.2f, %0.2f, %0.2f\n", camera.getPos().x, camera.getPos().y, camera.getPos().z);
@@ -118,12 +127,15 @@ void renderTick(std::stop_token stop_token, GameWindow& window,
 
       time_point start = Clock::now();
 
-      stateToWorldLaunch(*world);
-      worldToClipLaunch();
-      clipVertsLaunch();
-      clipToNDCLaunch();
-      ndcToScreenLaunch();
-      rasterizeLaunch();
+      if (stateToWorldLaunch(*world)) {
+        worldToClipLaunch();
+        clipVertsLaunch();
+        clipToNDCLaunch();
+        ndcToScreenLaunch();
+        rasterizeLaunch();
+      } else {
+        std::fill(camera.framebuffer.begin(), camera.framebuffer.end(), Color{50, 50, 50, 255});
+      }
 
       // update window
       window.updateScreen(camera);

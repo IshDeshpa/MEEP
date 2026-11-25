@@ -40,13 +40,18 @@ unsigned scanByteNaiveLaunch(DeviceBuffer<uint8_t> &gpu_in, DeviceBuffer<uint32_
   DeviceBuffer<uint32_t> b1(sz);
   DeviceBuffer<uint32_t> b2(sz);
   scanByteNaiveInit<<<blocks, threads_per_block, 0, r.render_stream>>>(gpu_in.data(), b1.data(), sz);
+  CUDA_CHECK(cudaGetLastError());
 
   for(uint8_t d=0; d<ceil(log2(sz)); d++){
     scanByteNaiveStep<<<blocks, threads_per_block, 0, r.render_stream>>>(b1.data(), b2.data(), d, sz);
+    CUDA_CHECK(cudaGetLastError());
     std::swap(b1, b2); // uses move constructor to swap thee two
   }
 
-  gpu_out = b1; // copy constructor will memcpy from b1 to gpu_out only if their types and sizes line up
+  // The scan runs on render_stream; finish it before synchronous copies on
+  // the default stream read the result.
+  CUDA_CHECK(cudaStreamSynchronize(r.render_stream));
+  gpu_out = b1;
 
   unsigned total = b1.get(sz-1) + (gpu_in.get(sz-1) != 0); // same 0/1 rule as the init kernel
 

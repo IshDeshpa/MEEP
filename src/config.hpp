@@ -15,5 +15,5 @@ constexpr float WORLD_TICK_RATE = 0.0F;
 constexpr float RENDER_TICK_RATE = 60.0F;
 constexpr float INPUT_TICK_RATE = 10.0F;
 constexpr double PLAYER_SPEED = 1.0;
-constexpr double MOUSE_SENSITIVITY = 0.0002;
+constexpr double MOUSE_SENSITIVITY = 0.002;
 

@@ -13,10 +13,8 @@ void dummyTick(std::stop_token stop){
   GameWindow &window = GameWindow::instance();
 
   while(!stop.stop_requested()){
-    // get the currently pressed keys once per tick on the tick edge
-    // if you're faster than a tick then unfortunately your keypress will not register, so ticks must be 
-    // short enough for the edge to trigger
-    std::bitset<256> state = window.consumePressedKeys(); 
+    // Read the currently held keys once per tick.
+    std::bitset<256> state = window.pressedKeys();
 
     if(window.isPressed('w', state)){
       std::cout << "W";
@@ -32,6 +30,11 @@ void dummyTick(std::stop_token stop){
 
     if(window.isPressed('d', state)){
       std::cout << "D";
+    }
+
+    const auto [dx, dy] = window.consumeMouseMove();
+    if(dx != 0 || dy != 0){
+      std::cout << " mouse: dx=" << dx << " dy=" << dy;
     }
 
     std::cout << std::endl;

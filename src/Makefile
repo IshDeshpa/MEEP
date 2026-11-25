@@ -17,6 +17,10 @@ DEBUG_FLAGS_1 := MEEP_DEBUG
 DEBUG_FLAGS_2 := $(DEBUG_FLAGS_1) MEEP_DEBUG_RENDER_TRACE
 
 DEBUG    ?= 0
+XPRA_MOUSE ?= 0
+ifeq ($(filter $(XPRA_MOUSE),0 1),)
+$(error XPRA_MOUSE must be 0 or 1)
+endif
 DEBUG_LEVELS := $(sort $(patsubst DEBUG_FLAGS_%,%,$(filter DEBUG_FLAGS_%,$(.VARIABLES))))
 ifeq ($(filter $(DEBUG),$(DEBUG_LEVELS)),)
 $(error DEBUG must be one of [$(DEBUG_LEVELS)], got '$(DEBUG)')
@@ -26,10 +30,13 @@ DEBUG_FLAGS := $(DEBUG_FLAGS_$(DEBUG))
 DEFINES  := -DGLM_ENABLE_EXPERIMENTAL -DMEEP_SRC_DIR='"$(CURDIR)"'
 # tick.hpp uses #ifdef, so MEEP_DEBUG must be absent at DEBUG=0.
 DEFINES += $(addprefix -D,$(addsuffix =1,$(DEBUG_FLAGS)))
+ifeq ($(XPRA_MOUSE),1)
+DEFINES += -DMEEP_XPRA_MOUSE=1
+endif
 
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 # libraries go after the objects on the link line, so they are kept by the linker
-LDLIBS   := -lX11
+LDLIBS   := -lX11 -lXi
 TARGET   := main
 ARGS     ?=
 SANITIZER ?=
@@ -67,6 +74,7 @@ ZLUDA_DIR ?= /mnt/Work/zluda
 ROCM_LIB_DIR ?= /opt/rocm/lib
 
 ifeq ($(BACKEND),zluda)
+OBJ_DIR := $(OBJ_DIR)/zluda
 CUDA_HOME ?= /mnt/Work/cuda-12.9
 CUDA_HOST_CXX ?= /usr/bin/g++-14
 endif
@@ -169,16 +177,16 @@ $(TARGET): $(OBJS) build/main.mode | $(ALPHA_LUT)
 
 build/main.mode: force-main-mode
 	@mkdir -p $(dir $@)
-	@printf '%s\n' 'DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS)' > $@.tmp
+	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS)' > $@.tmp
 	@cmp -s $@.tmp $@ || mv $@.tmp $@
 	@rm -f $@.tmp
 
 force-main-mode:
 
-# Changing a row in the flag table must also rebuild that level's objects.
+# Rebuild when compiler settings change, including the CUDA toolkit used for device LTO.
 $(OBJ_DIR)/debug.flags: force-main-mode
 	@mkdir -p $(dir $@)
-	@printf '%s\n' '$(DEBUG_FLAGS)' > $@.tmp
+	@printf '%s\n' '$(DEBUG_FLAGS)' '$(CXX) $(CXXFLAGS)' '$(NVCC) $(NVCCFLAGS)' > $@.tmp
 	@cmp -s $@.tmp $@ || mv $@.tmp $@
 	@rm -f $@.tmp
 
@@ -263,6 +271,7 @@ help:
 	@echo '  ARGS="..."          arguments passed to run and run-<test-name>'
 	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
+	@echo "  XPRA_MOUSE=$(XPRA_MOUSE)       convert Xpra XTEST pointer positions to deltas (0 or 1)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"

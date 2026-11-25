@@ -8,7 +8,7 @@
 #include <cstdio>
 #include <iostream>
 
-void stateToWorldLaunch(WorldState &ws){
+bool stateToWorldLaunch(WorldState &ws){
   static Renderer &r = Renderer::instance();
 
   // For each cell in the WorldState:
@@ -29,7 +29,8 @@ void stateToWorldLaunch(WorldState &ws){
 
   uint16_t threads_per_block = 256;
   std::size_t blocks = (world_size + threads_per_block - 1) / threads_per_block;
-  isVisible<<<blocks, threads_per_block, 0, r.render_stream>>>(ws.device_view, face_bitmasks.data());
+  isVisible<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data());
+  CUDA_CHECK(cudaGetLastError());
 
 #if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   // cudaDeviceSynchronize();
@@ -56,14 +57,15 @@ void stateToWorldLaunch(WorldState &ws){
 #endif
 
   if(num_refs == 0){
-    std::cout << "Nothing to render!" << std::endl;
-    return;
+    r.entities.reset();
+    return false;
   }
 
   r.entities = std::make_unique<DeviceBuffer<CellRenderEntity>>(num_refs);
   createRefsEntities<<<blocks, threads_per_block, 0, r.render_stream>>>(snapshot, face_bitmasks.data(), offsets.data(), r.entities->data(), world_size);
 
-  cudaDeviceSynchronize();
+  CUDA_CHECK(cudaGetLastError());
+  CUDA_CHECK(cudaStreamSynchronize(r.render_stream));
 
 #if defined(MEEP_DEBUG_RENDER_TRACE) && MEEP_DEBUG_RENDER_TRACE
   std::vector<CellRenderEntity> cre_host(num_refs);
@@ -77,6 +79,7 @@ void stateToWorldLaunch(WorldState &ws){
 #endif
 
   // all DeviceBuffers will free themselves here
+  return true;
 }
 
 __global__ void isVisible(DeviceWorldView dwv, uint8_t *face_bitmasks){

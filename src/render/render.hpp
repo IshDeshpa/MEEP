@@ -34,7 +34,7 @@ private:
 };
 
 // 1. State -> world-space vertices, triangles, and colors
-void stateToWorldLaunch(WorldState &ws);
+bool stateToWorldLaunch(WorldState &ws);
 MEEP_GLOBAL void isVisible(DeviceWorldView dwv, uint8_t *is_visible);
 MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz);
 

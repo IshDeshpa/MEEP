@@ -5,7 +5,12 @@
 #include <malloc.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
+#include <X11/XKBlib.h>
+#include <X11/extensions/XInput2.h>
 #include <stdexcept>
+#ifdef MEEP_XPRA_MOUSE
+#include <string_view>
+#endif
 
 GameWindow &GameWindow::instance(){
   static GameWindow window;
@@ -13,7 +18,7 @@ GameWindow &GameWindow::instance(){
 }
 
 GameWindow::GameWindow(){
-  // consumePressedKeys() is called from the game thread while this thread owns the display
+  // The game thread reads key state while this thread owns the display.
   if(XInitThreads() == 0){
     throw std::runtime_error("Unable to initialize Xlib threads!");
   }
@@ -50,7 +55,12 @@ GameWindow::GameWindow(){
 
   // inform us of window mapping events only
   XSelectInput(this->d, this->w,
-               StructureNotifyMask | PointerMotionMask | ButtonPressMask | KeyPressMask);
+               StructureNotifyMask | PointerMotionMask | ButtonPressMask | KeyPressMask |
+               KeyReleaseMask | FocusChangeMask);
+
+  Bool repeat_supported = False;
+  XkbSetDetectableAutoRepeat(this->d, True, &repeat_supported);
+  detectable_repeat = repeat_supported;
 
   // ask the window manager to send WM_DELETE_WINDOW instead of killing us when the window is closed
   this->wm_delete = XInternAtom(this->d, "WM_DELETE_WINDOW", False);
@@ -94,6 +104,31 @@ GameWindow::GameWindow(){
   // start unfocused so as to not startle the user
   this->focused = false;
 
+  // xinput stuff
+  int event_base, error_base;
+  if (!XQueryExtension(this->d, "XInputExtension",
+                      &this->xi_opcode, &event_base, &error_base)) {
+    throw std::runtime_error("XInput extension is unavailable");
+  }
+
+  int major = 2;
+  int minor = 0;
+  if (XIQueryVersion(this->d, &major, &minor) != Success) {
+    throw std::runtime_error("XInput2 is unavailable");
+  }
+
+  // Raw events are selected on the root window.
+  unsigned char mask_bytes[XIMaskLen(XI_RawMotion)] = {};
+  XISetMask(mask_bytes, XI_RawMotion);
+
+  XIEventMask mask{};
+  mask.deviceid = XIAllMasterDevices;
+  mask.mask_len = sizeof(mask_bytes);
+  mask.mask = mask_bytes;
+
+  XISelectEvents(this->d, DefaultRootWindow(d), &mask, 1);
+  XFlush(this->d);
+
   // block until the window is mapped
   XEvent e;
   do {
@@ -125,6 +160,10 @@ bool GameWindow::grabInput(){
 }
 
 void GameWindow::releaseInput(){
+  {
+    std::lock_guard lock(pressed_keys_mutex);
+    held_keys.reset();
+  }
   XUngrabPointer(d, CurrentTime);
   XUngrabKeyboard(d, CurrentTime);
   XFlush(d);
@@ -151,9 +190,9 @@ void GameWindow::updateScreen(HostScreen &s){
   XFlush(this->d);
 }
 
-std::bitset<256> GameWindow::consumePressedKeys(){
+std::bitset<256> GameWindow::pressedKeys(){
   std::lock_guard lock(pressed_keys_mutex);
-  return std::exchange(pending_keys, std::bitset<256>{});
+  return held_keys;
 }
 
 std::pair<int, int> GameWindow::consumeMouseMove(){
@@ -180,17 +219,80 @@ void GameWindow::join(){
       return;
     }
 
-    if(e.type == MotionNotify && this->focused){
-      const int dx = e.xmotion.x - SCREEN_WIDTH/2;
-      const int dy = e.xmotion.y - SCREEN_HEIGHT/2;
+    if (e.type == FocusOut && e.xfocus.mode != NotifyGrab && e.xfocus.mode != NotifyUngrab) {
+      focused = false;
+      releaseInput();
+    }
 
-      if(dx != 0 || dy != 0){
+    if (e.type == GenericEvent &&
+        e.xcookie.extension == xi_opcode &&
+        XGetEventData(d, &e.xcookie)) {
+
+      if (e.xcookie.evtype == XI_RawMotion && focused) {
+        const auto* motion =
+            static_cast<const XIRawEvent*>(e.xcookie.data);
+
+#ifdef MEEP_XPRA_MOUSE
+        auto [source_it, inserted] = pointer_sources.try_emplace(motion->sourceid);
+        auto &source = source_it->second;
+        if (inserted) {
+          int count = 0;
+          XIDeviceInfo *device = XIQueryDevice(d, motion->sourceid, &count);
+          if (device && count > 0 && device[0].name) {
+            source.absolute_synthetic =
+                std::string_view(device[0].name).find("XTEST pointer") != std::string_view::npos;
+          }
+          if (device) XIFreeDeviceInfo(device);
+        }
+#endif
+
+        double dx = 0.0;
+        double dy = 0.0;
+        const double* value = motion->raw_values;
+#ifdef MEEP_XPRA_MOUSE
+        bool has_x = false, has_y = false;
+#endif
+
+        // raw_values is packed: it contains one value for each set bit.
+        for (int axis = 0; axis < motion->valuators.mask_len * 8; ++axis) {
+          if (!XIMaskIsSet(motion->valuators.mask, axis)) {
+            continue;
+          }
+
+          if (axis == 0) {
+            dx = *value;
+#ifdef MEEP_XPRA_MOUSE
+            has_x = true;
+#endif
+          }
+          if (axis == 1) {
+            dy = *value;
+#ifdef MEEP_XPRA_MOUSE
+            has_y = true;
+#endif
+          }
+          ++value;
+        }
+
+#ifdef MEEP_XPRA_MOUSE
+        // Xpra injects absolute coordinates through the XTEST pointer even
+        // though XInput describes its valuators as relative.
+        if (source.absolute_synthetic) {
+          const double x = dx, y = dy;
+          dx = has_x && source.have_position ? x - source.x : 0;
+          dy = has_y && source.have_position ? y - source.y : 0;
+          if (has_x) source.x = x;
+          if (has_y) source.y = y;
+          if (has_x && has_y) source.have_position = true;
+        }
+#endif
+
         std::lock_guard lock(mouse_move_mutex);
         pending_mouse_move.first += dx;
         pending_mouse_move.second += dy;
-
-        XWarpPointer(this->d, None, this->w, 0, 0, 0, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT/2);
       }
+
+      XFreeEventData(d, &e.xcookie);
     }
 
     if (e.type == ButtonPress) {
@@ -208,14 +310,31 @@ void GameWindow::join(){
       }
     }
 
+    if (e.type == KeyRelease) {
+      if (!detectable_repeat && XEventsQueued(d, QueuedAfterReading) > 0) {
+        XEvent next;
+        XPeekEvent(d, &next);
+        if (next.type == KeyPress && next.xkey.keycode == e.xkey.keycode &&
+            next.xkey.time == e.xkey.time) continue;
+      }
+      std::lock_guard lock(pressed_keys_mutex);
+      held_keys.reset(e.xkey.keycode);
+    }
+
     if (e.type == KeyPress ) {
       if (valid_keys.test(e.xkey.keycode)) {
         std::lock_guard lock(pressed_keys_mutex);
-        pending_keys.set(e.xkey.keycode);
+        held_keys.set(e.xkey.keycode);
       }
 
       if(XLookupKeysym(&e.xkey, 0) == XK_Escape){
         this->focused = false;
+#ifdef MEEP_XPRA_MOUSE
+        for (auto &[id, source] : pointer_sources) {
+          (void)id;
+          source.have_position = false;
+        }
+#endif
         releaseInput();
       }
     }
