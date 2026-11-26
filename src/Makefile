@@ -48,8 +48,9 @@ GDB       ?= gdb
 GDB_FLAGS ?= --args
 COMPUTE_SANITIZER ?= compute-sanitizer
 COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
-NCU ?= ncu
-NCU_FLAGS ?=
+NCU ?= $(or $(shell command -v ncu 2>/dev/null),$(lastword $(sort $(wildcard $(CUDA_HOME)/bin/ncu $(CUDA_HOME)/nsight-compute-*/ncu /opt/nvidia/nsight-compute/*/ncu))),ncu)
+LAUNCH_COUNT ?= 50
+NCU_FLAGS ?= --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes
 NSYS ?= nsys
 NSYS_FLAGS ?= profile --trace=cuda
 
@@ -284,7 +285,7 @@ help:
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
 	@echo "  VALGRIND_FLAGS=...      override Valgrind options"
 	@echo "  COMPUTE_SANITIZER_FLAGS=...  override Compute Sanitizer options (default: --tool memcheck)"
-	@echo "  NCU_FLAGS=...           Nsight Compute options (e.g. --kernel-name regex:NAME)"
+	@echo "  NCU_FLAGS=...           Nsight Compute options (default: --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes)"
 	@echo "  NSYS_FLAGS=...          Nsight Systems command and options (default: profile --trace=cuda)"
 	@echo "  GDB_FLAGS=...           override GDB options"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
@@ -302,6 +303,7 @@ help:
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"
+	@echo "  LAUNCH_COUNT=$(LAUNCH_COUNT)  number of kernel launches to profile with NCU"
 	@echo "  NCU=$(NCU) NCU_FLAGS=$(NCU_FLAGS)"
 	@echo "  NSYS=$(NSYS) NSYS_FLAGS=$(NSYS_FLAGS)"
 	@echo "  BACKEND=$(BACKEND)        cuda | zluda (zluda runs binaries with LD_LIBRARY_PATH=$(ZLUDA_DIR))"
