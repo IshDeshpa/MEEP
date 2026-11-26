@@ -50,7 +50,7 @@ COMPUTE_SANITIZER ?= compute-sanitizer
 COMPUTE_SANITIZER_FLAGS ?= --tool memcheck
 NCU ?= $(or $(shell command -v ncu 2>/dev/null),$(lastword $(sort $(wildcard $(CUDA_HOME)/bin/ncu $(CUDA_HOME)/nsight-compute-*/ncu /opt/nvidia/nsight-compute/*/ncu))),ncu)
 LAUNCH_COUNT ?= 50
-NCU_FLAGS ?= --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes
+NCU_FLAGS ?= --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes --set=basic --section=PmSampling
 NSYS ?= nsys
 NSYS_FLAGS ?= profile --trace=cuda
 
@@ -285,7 +285,7 @@ help:
 	@echo "  RUNNER=address|thread   run directly with the matching sanitizer build"
 	@echo "  VALGRIND_FLAGS=...      override Valgrind options"
 	@echo "  COMPUTE_SANITIZER_FLAGS=...  override Compute Sanitizer options (default: --tool memcheck)"
-	@echo "  NCU_FLAGS=...           Nsight Compute options (default: --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes)"
+	@echo "  NCU_FLAGS=...           Nsight Compute options (default: --export=all-kernels --launch-count=$(LAUNCH_COUNT) --kill=yes --set=basic --section=PmSampling)"
 	@echo "  NSYS_FLAGS=...          Nsight Systems command and options (default: profile --trace=cuda)"
 	@echo "  GDB_FLAGS=...           override GDB options"
 	@echo "  format              run clang-tidy --fix on all C++, CUDA, and header files"
