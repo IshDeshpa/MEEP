@@ -163,7 +163,7 @@ size_t WorldState::index(size_t x, size_t y, size_t z) const {
                               static_cast<std::ptrdiff_t>(z));
 }
 
-size_t WorldState::index(worldcoord c) const {
+size_t WorldState::index(Coord c) const {
     if (c.x < -1 || c.y < -1 || c.z < -1 ||
         static_cast<std::ptrdiff_t>(c.x) > static_cast<std::ptrdiff_t>(n) ||
         static_cast<std::ptrdiff_t>(c.y) > static_cast<std::ptrdiff_t>(m) ||
@@ -173,11 +173,11 @@ size_t WorldState::index(worldcoord c) const {
     return device_view.index(c.x, c.y, c.z);
 }
 
-Cell& WorldState::operator()(worldcoord c) {
+Cell& WorldState::operator()(Coord c) {
     return world[index(c)];
 }
 
-const Cell& WorldState::operator()(worldcoord c) const {
+const Cell& WorldState::operator()(Coord c) const {
     return world[index(c)];
 }
 
@@ -220,7 +220,7 @@ Cell DeviceWorldView::readCell(std::size_t x, std::size_t y,
 }
 
 __host__ __device__
-Cell DeviceWorldView::readCell(worldcoord c) const noexcept {
+Cell DeviceWorldView::readCell(Coord c) const noexcept {
     return readCell(static_cast<std::size_t>(c.x),
                     static_cast<std::size_t>(c.y),
                     static_cast<std::size_t>(c.z));
@@ -247,7 +247,7 @@ CubeTile DeviceWorldView::readTile(std::size_t x, std::size_t y,
 }
 
 __host__ __device__
-CubeTile DeviceWorldView::readTile(worldcoord c) const noexcept {
+CubeTile DeviceWorldView::readTile(Coord c) const noexcept {
     return readTile(static_cast<std::size_t>(c.x),
                    static_cast<std::size_t>(c.y),
                    static_cast<std::size_t>(c.z));
@@ -265,7 +265,7 @@ void DeviceWorldView::writeCell(std::size_t x, std::size_t y,
 }
 
 __host__ __device__
-void DeviceWorldView::writeCell(worldcoord c, Cell cell) const noexcept {
+void DeviceWorldView::writeCell(Coord c, Cell cell) const noexcept {
     writeCell(static_cast<std::size_t>(c.x),
                 static_cast<std::size_t>(c.y),
                 static_cast<std::size_t>(c.z), cell);
@@ -290,7 +290,7 @@ void DeviceWorldView::writeTile(std::size_t x, std::size_t y,
 }
 
 __host__ __device__
-void DeviceWorldView::writeTile(worldcoord c, const CubeTile& tile) const noexcept {
+void DeviceWorldView::writeTile(Coord c, const CubeTile& tile) const noexcept {
     writeTile(static_cast<std::size_t>(c.x),
             static_cast<std::size_t>(c.y),
             static_cast<std::size_t>(c.z), tile);

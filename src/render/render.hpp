@@ -1,10 +1,15 @@
 #pragma once
 #include "extra/cuda_compat.hpp"
-#include "extra/cuda_raii.hpp"
+#include "extra/device_resources.hpp"
 #include "render/camera.hpp"
 #include "render/cell.hpp"
 #include <cstddef>
 #include <memory>
+#include <mutex>
+#include <stop_token>
+
+class GameWindow;
+class TickSource;
 
 inline constexpr std::size_t MAX_NEW_VERTS = 12;
 inline constexpr std::size_t VERTS_PER_CUBE = 8 + MAX_NEW_VERTS;
@@ -36,11 +41,15 @@ private:
   Renderer();
 };
 
+void renderTick(std::stop_token stop_token, GameWindow& window,
+                Renderer& renderer, Camera& camera, WorldState& world,
+                std::mutex& world_mutex, TickSource& render_tick);
+
 // 1. State -> world-space vertices, triangles, and colors
 // Caller must exclude world edits/buffer swaps for this entire call. All GPU
 // reads of ws finish before return, including the no-visible-entities path.
 bool stateToWorldLaunch(WorldState &ws);
-MEEP_GLOBAL void isVisible(DeviceWorldView dwv, uint8_t *is_visible);
+MEEP_GLOBAL void getFaceMasks(DeviceWorldView dwv, uint8_t *is_visible);
 MEEP_GLOBAL void createRefsEntities(DeviceWorldView dwv, const uint8_t *is_visible, const uint32_t *offsets, CellRenderEntity *ent_out, std::size_t world_sz, bool *tri_masks);
 
 // 2. World -> clip space 

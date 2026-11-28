@@ -3,7 +3,7 @@
 #include "state/state.hpp"
 #include "state/lut.hpp"
 #include "tick/tick.hpp"
-#include "window/window.hpp"
+#include "render/window.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -87,48 +87,6 @@ void worldTick(std::stop_token stop_token) {
 
     world_tick.incAndWait(start);
   }
-}
-
-void renderTick(std::stop_token stop_token, GameWindow& window,
-                Renderer&, Camera& camera) {
-    // const glm::dvec3 pos(-5.0, 3.0, 3.0);
-    // const glm::dvec3 target(1.0, 0.0, 0.0);
-    // camera.setPose(pos, glm::normalize(target - pos));
-    //
-    while (!stop_token.stop_requested()) {
-      if (RENDER_TICK_RATE <= 0.0F) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        continue;
-      }
-
-      time_point start = Clock::now();
-
-      bool has_entities;
-      {
-        std::lock_guard lock(world_mutex);
-        // This call waits for all world reads on render_stream before returning.
-        has_entities = stateToWorldLaunch(*world);
-      }
-
-      if (has_entities) {
-        worldToClipLaunch();
-        clipVertsLaunch();
-        clipToNDCLaunch();
-        ndcToScreenLaunch();
-        rasterizeLaunch();
-      } else {
-        std::fill(camera.framebuffer.begin(), camera.framebuffer.end(), Color{50, 50, 50, 255});
-      }
-
-      // update window
-      window.updateScreen(camera);
-
-#ifdef MEEP_DEBUG
-      // camera.writePPM("render_debug.ppm");
-#endif
-
-      render_tick.incAndWait(start);
-    }
 }
 
 int main(int argc, char* argv[]){
@@ -250,7 +208,7 @@ int main(int argc, char* argv[]){
 
     std::jthread t1{worldTick};
     std::jthread t2{[&](std::stop_token stop_token) {
-      renderTick(stop_token, window, renderer, camera);
+      renderTick(stop_token, window, renderer, camera, *world, world_mutex, render_tick);
     }};
     std::jthread t3{[&](std::stop_token stop_token) {
       inputTick(stop_token, window, camera, mouse_sensitivity);

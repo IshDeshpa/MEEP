@@ -6,7 +6,15 @@ PYTHON   ?= python3
 ALPHA_LUT := build/lut_alpha.bin
 # subfolders whose sources are compiled in; includes are relative to src/
 # (e.g. #include "render/camera.h")
-MODULES  := render state extra window tick
+RENDERER ?= render
+ifeq ($(RENDERER),render)
+RENDER_MODULE := render
+else ifeq ($(RENDERER),GL)
+RENDER_MODULE := renderGL
+else
+$(error RENDERER must be 'render' or 'GL', got '$(RENDERER)')
+endif
+MODULES  := $(RENDER_MODULE) state extra mouse tick
 MODULES  := $(foreach m,$(MODULES),$(if $(wildcard $(m)),$(m)))
 
 # Debug flag table. Add flags to a row; higher rows explicitly inherit lower
@@ -38,6 +46,13 @@ DEFINES += -DMEEP_MOUSE_MODE=$(MOUSE_MODE)
 CXXFLAGS := --std=c++20 -O3 -Wall -Wextra $(DEFINES) -I$(GLM_DIR) -I.
 # libraries go after the objects on the link line, so they are kept by the linker
 LDLIBS   := -lX11 -lXi
+ifeq ($(RENDERER),GL)
+# pkg-config supplies nonstandard include/library paths when available.
+GL_CFLAGS ?= $(shell pkg-config --cflags gl glew 2>/dev/null)
+GL_LIBS ?= $(or $(shell pkg-config --libs gl glew 2>/dev/null),-lGLEW -lGL)
+CXXFLAGS += $(GL_CFLAGS)
+LDLIBS += $(GL_LIBS)
+endif
 TARGET   := main
 ARGS     ?=
 SANITIZER ?=
@@ -85,6 +100,10 @@ CUDA_HOME ?= /mnt/Work/cuda-12.9
 CUDA_HOST_CXX ?= /usr/bin/g++-14
 endif
 
+ifeq ($(RENDERER),GL)
+OBJ_DIR := $(OBJ_DIR)/renderGL
+endif
+
 # CUDA install root, detected in order: the nvcc already on PATH (symlinks
 # resolved), then the usual locations. Override with `make CUDA_HOME=/path`.
 CUDA_NVCC_PATH := $(shell readlink -f "$$(command -v nvcc)" 2>/dev/null)
@@ -104,6 +123,9 @@ CXXFLAGS += -I$(CUDA_INC)
 endif
 # Device linking supports out-of-line helpers; LTO enables cross-file inlining.
 NVCCFLAGS := --std=c++20 --expt-relaxed-constexpr -O3 -rdc=true -dlto -arch=$(CUDA_ARCH) -Xcompiler -Wall,-Wextra $(DEFINES) -I$(GLM_DIR) -I.$(if $(CUDA_INC), -I$(CUDA_INC))
+ifeq ($(RENDERER),GL)
+NVCCFLAGS += $(GL_CFLAGS)
+endif
 ifneq ($(DEBUG),0)
 # -G (device debug) cannot be combined with -dlto, so LTO is dropped here
 NVCCFLAGS := $(filter-out -O3 -dlto,$(NVCCFLAGS)) -O0 -g -G
@@ -187,7 +209,7 @@ $(TARGET): $(OBJS) build/main.mode | $(ALPHA_LUT)
 
 build/main.mode: force-main-mode
 	@mkdir -p $(dir $@)
-	@printf '%s\n' 'BACKEND=$(BACKEND) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS) MOUSE_MODE=$(MOUSE_MODE)' > $@.tmp
+	@printf '%s\n' 'BACKEND=$(BACKEND) RENDERER=$(RENDERER) DEBUG=$(DEBUG) SANITIZER=$(SANITIZER) FLAGS=$(DEBUG_FLAGS) MOUSE_MODE=$(MOUSE_MODE) LDLIBS=$(LDLIBS)' > $@.tmp
 	@cmp -s $@.tmp $@ || mv $@.tmp $@
 	@rm -f $@.tmp
 
@@ -214,7 +236,7 @@ gen_world:
 test-mouse: $(OBJ_DIR)/host-tests/mouse_input_test
 	./$(OBJ_DIR)/host-tests/mouse_input_test
 
-$(OBJ_DIR)/host-tests/mouse_input_test: tests/mouse_input_test.cpp window/pointer_motion.hpp config.hpp $(OBJ_DIR)/debug.flags
+$(OBJ_DIR)/host-tests/mouse_input_test: tests/mouse_input_test.cpp mouse/pointer_motion.hpp config.hpp $(OBJ_DIR)/debug.flags
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
@@ -300,6 +322,8 @@ help:
 	@echo "  RUNNER=$(RUNNER)  valgrind | compute-sanitizer | ncu | nsys | gdb | address | thread"
 	@echo "  DEBUG=$(DEBUG)            available levels: $(DEBUG_LEVELS)"
 	@echo "  MOUSE_MODE=$(MOUSE_MODE)        0: X11, 1: WSL, 2: Xpra"
+	@echo "  RENDERER=$(RENDERER)       render | GL (selects render/ or renderGL/)"
+	@echo "  GL_CFLAGS=$(GL_CFLAGS) GL_LIBS=$(GL_LIBS) (override OpenGL flags for RENDERER=GL)"
 	@echo "  SANITIZER=$(SANITIZER)  address | thread"
 	@echo "  VALGRIND_FLAGS=$(VALGRIND_FLAGS)"
 	@echo "  GDB_FLAGS=$(GDB_FLAGS)"

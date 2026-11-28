@@ -1,6 +1,6 @@
 #include "config.hpp"
 #if MEEP_MOUSE_MODE == 1
-#include "window/pointer_motion.hpp"
+#include "mouse/pointer_motion.hpp"
 #endif
 
 #include <cmath>

@@ -1,4 +1,4 @@
-#include "extra/cuda_raii.hpp"
+#include "extra/device_resources.hpp"
 #include "render.hpp"
 #include "render/cell.hpp"
 #include "render/render.hpp"

@@ -30,7 +30,7 @@ __global__ void exerciseTileView(DeviceWorldView buffers,
             (static_cast<unsigned>(tile.cells[c].elem) + 1) & 15);
         tile.cells[c].state = (tile.cells[c].state + c + 1) & 15;
     }
-    buffers.writeTile(worldcoord(x, y, z), tile);
+    buffers.writeTile(Coord(x, y, z), tile);
 }
 
 void checkTileHelpers(WorldState& world, const std::vector<Cell>& source) {
@@ -85,17 +85,17 @@ void checkWorld(size_t n, size_t m, size_t k) {
             world.k_pad == k + 2, "Wrong padded dimensions");
 
     const WorldState& const_world = world;
-    for (const coord c : {coord(-1, 0, 0), coord(0, -1, 0), coord(0, 0, -1),
-                         coord(static_cast<int>(n), 0, 0),
-                         coord(0, static_cast<int>(m), 0),
-                         coord(0, 0, static_cast<int>(k))}) {
+    for (const Coord c : {Coord(-1, 0, 0), Coord(0, -1, 0), Coord(0, 0, -1),
+                          Coord(static_cast<int>(n), 0, 0),
+                          Coord(0, static_cast<int>(m), 0),
+                          Coord(0, 0, static_cast<int>(k))}) {
         require(const_world(c).elem == Element::BLOCK,
                 "Renderer neighbor access did not reach the BLOCK halo");
     }
-    require(&world(coord(0, 0, 0)) == world.world + world.index(0, 0, 0),
+    require(&world(Coord(0, 0, 0)) == world.world + world.index(0, 0, 0),
             "Renderer access did not use visible coordinates");
     bool rejected_coordinate = false;
-    try { (void)world(coord(-2, 0, 0)); }
+    try { (void)world(Coord(-2, 0, 0)); }
     catch (const std::out_of_range&) { rejected_coordinate = true; }
     require(rejected_coordinate, "Renderer coordinate outside padding accepted");
 

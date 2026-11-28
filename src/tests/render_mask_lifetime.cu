@@ -28,7 +28,7 @@ static void checkMasks(const WorldState &world) {
   for (std::size_t index = 0; index < count; ++index) {
     require(entities[index].triMask == renderer.tri_masks->data() + index * triangles,
             "Entity mask must reference its own renderer-owned slice");
-    const worldcoord cell(entities[index].transform[3]);
+    const Coord cell(entities[index].transform[3]);
     require(cell.x >= 0 && cell.y >= 0 && cell.z >= 0 &&
             cell.x < static_cast<int>(world.n) && cell.y < static_cast<int>(world.m) &&
             cell.z < static_cast<int>(world.k),

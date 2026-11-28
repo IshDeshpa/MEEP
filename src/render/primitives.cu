@@ -19,7 +19,7 @@ __host__ __device__ DeviceEntity::DeviceEntity(const DeviceGeometryData *dgd,
 }
 
 __host__ __device__ DeviceEntity::DeviceEntity(const DeviceGeometryData *dgd,
-                                            Color c, worldcoord coords,
+                                            Color c, Coord coords,
                                             glm::dvec3 rot_euler, bool *tri_mask)
     : DeviceEntity(dgd, c, toTransform(coords, rot_euler), tri_mask) {}
 

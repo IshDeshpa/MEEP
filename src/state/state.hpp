@@ -11,8 +11,7 @@
 #include <glm/vec3.hpp>
 
 using dim = std::size_t;
-using worldcoord = glm::ivec3;
-using coord = worldcoord;
+using Coord = glm::ivec3;
 
 enum class Element : std::uint8_t {
   AIR = 0, WATER = 1, EARTH = 2, LAVA = 3,
@@ -46,24 +45,24 @@ struct DeviceWorldView {
   MEEP_HOST_DEVICE
   std::size_t index(std::size_t x, std::size_t y, std::size_t z) const noexcept;
   MEEP_HOST_DEVICE
-  worldcoord coord(std::size_t ind) const noexcept {
+  Coord coord(std::size_t ind) const noexcept {
     const std::size_t visible_m = visibleM(), visible_k = visibleK();
-    return worldcoord(static_cast<int>(ind / (visible_m * visible_k)),
+    return Coord(static_cast<int>(ind / (visible_m * visible_k)),
                       static_cast<int>((ind / visible_k) % visible_m),
                       static_cast<int>(ind % visible_k));
   }
   MEEP_HOST_DEVICE Cell readCell(std::size_t x, std::size_t y,
                                  std::size_t z) const noexcept;
-  MEEP_HOST_DEVICE Cell readCell(worldcoord c) const noexcept;
+  MEEP_HOST_DEVICE Cell readCell(Coord c) const noexcept;
   MEEP_HOST_DEVICE CubeTile readTile(std::size_t x, std::size_t y,
                                      std::size_t z) const noexcept;
-  MEEP_HOST_DEVICE CubeTile readTile(worldcoord c) const noexcept;
+  MEEP_HOST_DEVICE CubeTile readTile(Coord c) const noexcept;
   MEEP_HOST_DEVICE void writeCell(std::size_t x, std::size_t y,
                                   std::size_t z, Cell cell) const noexcept;
-  MEEP_HOST_DEVICE void writeCell(worldcoord c, Cell cell) const noexcept;
+  MEEP_HOST_DEVICE void writeCell(Coord c, Cell cell) const noexcept;
   MEEP_HOST_DEVICE void writeTile(std::size_t x, std::size_t y,
                                   std::size_t z, const CubeTile& tile) const noexcept;
-  MEEP_HOST_DEVICE void writeTile(worldcoord c, const CubeTile& tile) const noexcept;
+  MEEP_HOST_DEVICE void writeTile(Coord c, const CubeTile& tile) const noexcept;
 };
 static_assert(std::is_trivially_copyable_v<DeviceWorldView>);
 
@@ -85,9 +84,9 @@ struct WorldState {
   WorldState(const WorldState&) = delete;
   WorldState& operator=(const WorldState&) = delete;
   size_t index(size_t x, size_t y, size_t z) const;
-  size_t index(worldcoord c) const;
-  Cell& operator()(worldcoord c);
-  const Cell& operator()(worldcoord c) const;
+  size_t index(Coord c) const;
+  Cell& operator()(Coord c);
+  const Cell& operator()(Coord c) const;
   size_t unPaddedIndex(size_t x, size_t y, size_t z) const;
   size_t paddedIndex(size_t x, size_t y, size_t z) const;
   DeviceWorldView deviceView() const;

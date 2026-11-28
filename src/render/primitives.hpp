@@ -10,10 +10,9 @@
 #include <strings.h>
 #include <type_traits>
 #include <vector>
-#include <bit>
 #include "extra/cuda_compat.hpp"
-#include "extra/cuda_raii.hpp"
-#include "extra/enum_lut.hpp"
+#include "extra/device_resources.hpp"
+#include "state/visual.hpp"
 #include "state/state.hpp"
 
 using Vertex=glm::fvec4; // might change later if normals/other are added. heterogeneous coords
@@ -22,70 +21,6 @@ using Vertex2D=glm::fvec2;
 
 using VertRef=Tri::value_type;
 using TriRef=unsigned int; // index pointing to a triangle (use instead of a Tri&, since those refs may be invalidated since tris are in vectors)
-
-// LUTS
-enum class Direction : uint8_t{
-  X_PLUS=0,
-  X_MINUS,
-  Y_PLUS,
-  Y_MINUS,
-  Z_PLUS,
-  Z_MINUS,
-  COUNT
-};
-
-DEFINE_ENUM_LUT(DIRECTION_LUT, Direction, glm::vec3,
-  glm::vec3(1, 0, 0),
-  glm::vec3(-1, 0, 0),
-  glm::vec3(0, 1, 0),
-  glm::vec3(0, -1, 0),
-  glm::vec3(0, 0, 1),
-  glm::vec3(0, 0, -1),
-);
-
-struct Color {
-  uint8_t r; uint8_t g; uint8_t b; uint8_t a;
-
-  constexpr unsigned maskToShift(unsigned mask){
-    return std::countr_zero(mask); // find first bit set
-  }
-  constexpr unsigned maskToSize(unsigned mask){
-    return std::popcount(mask); // number of bits set in the mask
-  }
-
-  constexpr unsigned getNativePixel(XVisualInfo *vi){
-    unsigned long &r_mask = vi->red_mask;
-    unsigned long &g_mask = vi->green_mask;
-    unsigned long &b_mask = vi->blue_mask;
-
-    unsigned rm_shift = maskToShift(r_mask);
-    unsigned gm_shift = maskToShift(g_mask);
-    unsigned bm_shift = maskToShift(b_mask);
-
-    return ((r << rm_shift) & r_mask) |
-            ((b << bm_shift) & b_mask) |
-            ((g << gm_shift) & g_mask);
-  }
-};
-
-DEFINE_ENUM_LUT_SIZED(ELEMENT_COLOR_LUT, Element, Color, ELEMENT_COUNT,
-    {  0,   0,   0,   0}, // AIR
-    { 30, 140, 255,  76}, // WATER
-    {110,  70,  50, 255}, // EARTH
-    {255,  69,   0, 255}, // LAVA
-    { 35, 175,  60, 255}, // NATURE
-    {200, 200, 200,  64}, // STEAM
-    {255, 120,   0,  64}, // FIRE
-    {175, 255,   0, 230}, // ACID
-    {110, 240, 255, 128}, // ICE
-    {255, 165, 165,  76}, // HOTAIR
-    {255, 230, 150, 240}, // EXPLOSION
-    {220, 200, 150, 255}, // SAND
-    {115, 110, 100, 255}, // BOMB
-    {100, 100, 110, 255}, // BLOCK
-    {210, 210, 200, 255}, // EMITTER
-    { 35,  10,  60, 255}, // VOID
-);
 
 // Host-side geometry parsed from an OBJ file.
 struct HostGeometryData {
@@ -162,7 +97,7 @@ public:
                                 glm::dmat4 t, bool *tri_mask);
 
   MEEP_HOST_DEVICE DeviceEntity(const DeviceGeometryData *dgd, Color c,
-                                worldcoord coords, glm::dvec3 rot_euler, bool *tri_mask);
+                                Coord coords, glm::dvec3 rot_euler, bool *tri_mask);
 
   MEEP_HOST_DEVICE const static glm::dmat4 toTransform(glm::dvec3 translation,
                                           glm::dvec3 rot_euler);

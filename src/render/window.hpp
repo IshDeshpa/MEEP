@@ -3,17 +3,12 @@
 #include "config.hpp"
 
 #include "render/camera.hpp"
-#if MEEP_MOUSE_MODE == 1
-#include "window/pointer_motion.hpp"
-#endif
+#include "mouse/mouse.hpp"
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <bitset>
 #include <mutex>
-#if MEEP_MOUSE_MODE != 0
-#include <unordered_map>
-#endif
 #include <unordered_set>
 #include <utility>
 
@@ -63,9 +58,6 @@ private:
 
   bool grabInput();
   void releaseInput();
-#if MEEP_MOUSE_MODE == 1
-  void handleWslMouseMotion(const XIRawEvent &motion);
-#endif
 
   Display *d;
   XVisualInfo *vi;
@@ -76,32 +68,11 @@ private:
 
   Atom wm_delete;
 
-  int xi_opcode;
   bool detectable_repeat = false;
-#if MEEP_MOUSE_MODE == 1
-  std::unordered_map<int, PointerMotion> wsl_pointer_sources;
-#endif
-#if MEEP_MOUSE_MODE == 2
-  struct PointerSource {
-    bool absolute_synthetic = false;
-    bool have_position = false;
-    double x = 0, y = 0;
-  };
-  std::unordered_map<int, PointerSource> pointer_sources;
-#endif
-
+  MouseInput mouse;
   bool focused;
-  std::mutex mouse_move_mutex;
-#if MEEP_MOUSE_MODE == 1
-  std::pair<double, double> pending_mouse_move{0, 0};
-#else
-  std::pair<int, int> pending_mouse_move{0, 0};
-#endif
   std::mutex pressed_keys_mutex;
   std::bitset<256> held_keys;
-  std::mutex mouse_click_mutex;
-  bool pending_left_click{false};
-  bool pending_right_click{false};
 
   // Set of keys that are considered valid (keycodes, not keysyms)
   const std::unordered_set<unsigned int> VALID_KEYSYMS = {XK_W, XK_A, XK_S, XK_D, XK_space, XK_Shift_L, XK_Shift_R};

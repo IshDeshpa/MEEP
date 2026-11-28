@@ -14,9 +14,9 @@
 // A cell that also has self-contained coords
 struct CellRef{
   Cell cell;
-  worldcoord coords;
+  Coord coords;
 
-  MEEP_HOST_DEVICE CellRef(Cell cell, worldcoord c): cell(cell), coords(c){}
+  MEEP_HOST_DEVICE CellRef(Cell cell, Coord c): cell(cell), coords(c){}
 };
 
 struct HostCube {
@@ -67,10 +67,10 @@ class CellRenderEntity : public DeviceEntity {
   
 public:
   // Placeholder for containers that default-construct; overwritten by a copy from the GPU
-  CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, worldcoord(0)) {}
+  CellRenderEntity(): DeviceEntity(), cell_ref(Cell{}, Coord(0)) {}
 
   // The renderer owns tri_mask; entities borrow one triangle-count-sized slice.
-  MEEP_HOST_DEVICE CellRenderEntity(Cell c, worldcoord coord, const DeviceCubeData *dcd, Color color, bool *tri_mask): DeviceEntity(dcd, color, coord, glm::dvec3(0.0), tri_mask), cell_ref(CellRef(c, coord)) {}
+  MEEP_HOST_DEVICE CellRenderEntity(Cell c, Coord coord, const DeviceCubeData *dcd, Color color, bool *tri_mask): DeviceEntity(dcd, color, coord, glm::dvec3(0.0), tri_mask), cell_ref(CellRef(c, coord)) {}
 
   MEEP_HOST_DEVICE CellRenderEntity(CellRef cr, const DeviceCubeData *dcd, Color color, bool *tri_mask): CellRenderEntity(cr.cell, cr.coords, dcd, color, tri_mask) {}
 
@@ -81,7 +81,7 @@ public:
   // Host only: prints the cell, its coords and its color to stdout
   void print() const;
 
-  MEEP_HOST_DEVICE worldcoord coords() const {
+  MEEP_HOST_DEVICE Coord coords() const {
     return cell_ref.coords;
   }
 };

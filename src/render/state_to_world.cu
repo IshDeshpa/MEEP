@@ -1,4 +1,4 @@
-#include "extra/cuda_raii.hpp"
+#include "extra/device_resources.hpp"
 #include "render/cell.hpp"
 #include "render/primitives.hpp"
 #include "render/render.hpp"
@@ -6,7 +6,8 @@
 #include <cuda_runtime_api.h>
 #include <cstdint>
 #include <cstdio>
-#include <iostream>
+
+__global__ void isVisible(DeviceWorldView dwv, uint8_t *face_bitmasks);
 
 bool stateToWorldLaunch(WorldState &ws){
   static Renderer &r = Renderer::instance();
@@ -89,7 +90,7 @@ __global__ void isVisible(DeviceWorldView dwv, uint8_t *face_bitmasks){
   std::size_t ind = blockIdx.x * blockDim.x + threadIdx.x;
   if(ind >= dwv.size()) return;
 
-  worldcoord coords = dwv.coord(ind);
+  Coord coords = dwv.coord(ind);
   Cell cell = dwv.readCell(coords);
   CellRef cr{cell, coords};
 
@@ -103,7 +104,7 @@ __global__ void createRefsEntities(DeviceWorldView dwv, const uint8_t *face_bitm
 
   if(face_bitmasks[ind] == 0) return; // completely obscured, non-exposed
 
-  worldcoord c = dwv.coord(ind);
+  Coord c = dwv.coord(ind);
   Cell cell = dwv.readCell(c);
   CellRenderEntity *cre = &(ent_out[offsets[ind]]);
 

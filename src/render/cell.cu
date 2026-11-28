@@ -10,7 +10,7 @@
 __constant__ DeviceCube::Data DEVICE_CUBE;
 
 __device__ static bool isFaceExposed(CellRef &c, DeviceWorldView dwv, Direction d){
-  const worldcoord adjacent = c.coords + worldcoord(DIRECTION_LUT[d]);
+  const Coord adjacent = c.coords + Coord(DIRECTION_LUT[d]);
 
   // Anything outside the visible world counts as exposed, without reading the padding.
   if (adjacent.x < 0 || adjacent.y < 0 || adjacent.z < 0 ||

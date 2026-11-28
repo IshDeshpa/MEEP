@@ -67,5 +67,4 @@ public:
     if (index >= sz) throw std::out_of_range("DeviceBuffer::set: index out of range");
     CUDA_CHECK(cudaMemcpy(ptr + index, &value, sizeof(T), cudaMemcpyHostToDevice));
   }
-
 };
